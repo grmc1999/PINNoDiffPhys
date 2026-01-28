@@ -11,10 +11,12 @@ from Transforms.Data_transforms import *
 
 import fire
 import json
+from dataclasses import dataclass
 
 from phi.torch.flow import vec,UniformGrid, Field, tensor
 from random import choice,sample
 from Physical_models.Differentiable_simulation import physical_model,Space2Tensor,Tensor2Space
+from Physical_models.pde_models import PDEModelConfig, create_pde_model
 from copy import copy
 from einops import rearrange
 from scipy import ndimage
@@ -23,14 +25,35 @@ from random import randint
 from phi.torch.flow import fluid,Solve
       
 
+@dataclass(frozen=True)
+class PINNSTrainerDependencies:
+    field: Field
+    physical_model: object
+    statistical_model: object
+    optimizer: object
+    simulation_steps: int
+    time_step: float
+    loss: object
+
+
 class PINNS_based_SOL_trainer(object):
+    @classmethod
+    def from_dependencies(cls, deps: PINNSTrainerDependencies):
+      return cls(
+        field=deps.field,
+        physical_model=deps.physical_model,
+        statistical_model=deps.statistical_model,
+        optimizer=deps.optimizer,
+        simulation_steps=deps.simulation_steps,
+        time_step=deps.time_step,
+        loss=deps.loss,
+      )
     def __init__(self,field,physical_model,statistical_model,optimizer,simulation_steps,time_step,loss):
 
       self.dt=time_step
       self.v=field
       self.physical_model_constructor=physical_model
-
-      self.ph_model=physical_model(self.v,dt=self.dt)
+      self.ph_model=self._build_physical_model(physical_model)
 
       self.init_states_gt=[self.v]
       self.T=[0.0]
@@ -45,6 +68,15 @@ class PINNS_based_SOL_trainer(object):
       self.optimizer=optimizer
 
       self.geometry=self.v.geometry
+
+    def _build_physical_model(self,physical_model_spec):
+      if isinstance(physical_model_spec,PDEModelConfig):
+        return physical_model_spec.build(self.v,self.dt)
+      if isinstance(physical_model_spec,str):
+        return create_pde_model(physical_model_spec,self.v,dt=self.dt)
+      if callable(physical_model_spec):
+        return physical_model_spec(self.v,dt=self.dt)
+      raise TypeError("physical_model must be a callable, PDEModelConfig, or registry name string")
 
     def generate_postion_time_code(self,field,t):  # Re implement if more dimensions are needed
       X=field.geometry.center.native("x,y")
