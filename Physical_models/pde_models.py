@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Type
+from typing import Any, Callable, Dict, Optional, Type, Union
 
-from phi.torch.flow import Field, Solve, advect, diffuse, fluid, math
+from phi.torch.flow import Field, Solve, advect, diffuse, fluid, laplace, math, vec
 
 
 class BasePDEModel:
@@ -61,9 +61,62 @@ class DiffusionModel(BasePDEModel):
         return diffuse.explicit(field, self.diffusivity, dt=self.dt, correct_skew=False)
 
 
+class AdvectionModel(BasePDEModel):
+    def __init__(
+        self,
+        domain: Field,
+        dt: float,
+        velocity: Union[Field, Any] = None,
+    ) -> None:
+        super().__init__(domain, dt)
+        if velocity is None:
+            velocity = vec(x=1.0, y=0.0)
+        if isinstance(velocity, Field):
+            self.velocity = velocity
+        else:
+            self.velocity = Field(geometry=domain.geometry, values=velocity)
+
+    def step(self, field: Field) -> Field:
+        return advect.semi_lagrangian(field, self.velocity, self.dt)
+
+
+class PoissonModel(BasePDEModel):
+    def __init__(
+        self,
+        domain: Field,
+        dt: float,
+        source: Optional[Union[Field, Callable[[Field], Field], float]] = None,
+    ) -> None:
+        super().__init__(domain, dt)
+        self.source = source
+
+    def _source_field(self, field: Field) -> Field:
+        if callable(self.source):
+            return self.source(field)
+        if isinstance(self.source, Field):
+            return self.source
+        if self.source is None:
+            return field.with_values(math.zeros_like(field.values))
+        return field.with_values(self.source)
+
+    def step(self, field: Field) -> Field:
+        source_field = self._source_field(field)
+
+        def poisson_operator(x: Field) -> Field:
+            return -laplace(x, order=2, implicit=math.Solve, correct_skew=False)
+
+        return math.solve_linear(
+            poisson_operator,
+            y=source_field,
+            solve=Solve("CG-adaptive", 1e-2, 1e-2, x0=field),
+        )
+
+
 PDE_MODEL_REGISTRY: Dict[str, Type[BasePDEModel]] = {
     "navier_stokes": NavierStokesModel,
     "diffusion": DiffusionModel,
+    "advection": AdvectionModel,
+    "poisson": PoissonModel,
 }
 
 
