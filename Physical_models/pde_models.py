@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 from phi.torch.flow import Field, Solve, advect, diffuse, fluid, laplace, math, vec
+from phi.torch.field import laplace
 
 
 class BasePDEModel:
