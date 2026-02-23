@@ -23,7 +23,7 @@ class simple_cnn_model(torch.nn.Module):
   def __init__(self):
     super(simple_cnn_model,self).__init__()
 
-    self.conv1=torch.nn.Conv2d(3, 32, (9,9), padding=4)
+    self.conv1=torch.nn.Conv2d(4, 32, (9,9), padding=4)
     self.conv2=torch.nn.Conv2d(32, 64, (9,9), padding=4)
     self.conv3=torch.nn.Conv2d(64, 1, (9,9), padding=4)
     self.act1=torch.nn.ReLU()
