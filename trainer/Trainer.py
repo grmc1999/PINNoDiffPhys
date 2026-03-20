@@ -42,7 +42,7 @@ class FiredrakeTimeStepper(ABC):
         self.bcs = self.build_bcs()
         self.point_evaluator = point_evaluator
 
-        if self.point_evaluator != None:
+        if isinstance(self.point_evaluator, np.ndarray):
             self.evaluation_shape = self.point_evaluator.shape
             self.point_evaluator = fd.PointEvaluator(mesh = mesh, points = self.point_evaluator.reshape(mesh.geometric_dimension(),-1))
             #PE.evaluate(xc)
