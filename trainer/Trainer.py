@@ -44,7 +44,6 @@ class FiredrakeTimeStepper(ABC):
 
         if isinstance(self.point_evaluator, np.ndarray):
             self.evaluation_shape = self.point_evaluator.shape
-            self.point_evaluator = fd.PointEvaluator(mesh = mesh, points = self.point_evaluator.reshape(-1,mesh.geometric_dimension()))
             vom = fd.VertexOnlyMesh(mesh,self.point_evaluator.reshape(-1,mesh.geometric_dimension()))
             self.P0DG = fd.FunctionSpace(vom, "DG", 0)
 
