@@ -45,7 +45,8 @@ class FiredrakeTimeStepper(ABC):
         if isinstance(self.point_evaluator, np.ndarray):
             self.evaluation_shape = self.point_evaluator.shape
             self.point_evaluator = fd.PointEvaluator(mesh = mesh, points = self.point_evaluator.reshape(-1,mesh.geometric_dimension()))
-            #PE.evaluate(xc)
+            vom = fd.VertexOnlyMesh(mesh,self.point_evaluator.reshape(-1,mesh.geometric_dimension()))
+            self.P0DG = fd.FunctionSpace(vom, "DG", 0)
 
     @abstractmethod
     def build_function_space(self, mesh: fd.MeshGeometry):
@@ -94,7 +95,7 @@ class FiredrakeTimeStepper(ABC):
             solver_parameters=self.solver_parameters,
         )
         if self.point_evaluator != None:
-            u_np1 = self.point_evaluator.evaluate(u_np1)
+            u_np1 = fd.assemble(fd.interpolate(u_np1, self.P0DG))
 
         # Reduced functional whose "output" is the field u_{n+1}
         red = ReducedFunctional(u_np1, Control(u_n))
