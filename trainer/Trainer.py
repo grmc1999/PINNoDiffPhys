@@ -12,11 +12,6 @@ import firedrake as fd
 from firedrake.adjoint import Control, ReducedFunctional
 from firedrake.ml.pytorch.fem_operator import fem_operator, to_torch
 
-
-# ============================================================
-# 1. Generic Firedrake time-stepper
-# ============================================================
-
 class FiredrakeTimeStepper(ABC):
     """
     Abstract differentiable Firedrake time-stepper.
@@ -106,10 +101,6 @@ class FiredrakeTimeStepper(ABC):
         return fem_operator(red)
 
 
-# ============================================================
-# 2. Example: implicit linear diffusion stepper
-# ============================================================
-
 class ImplicitDiffusionStepper(FiredrakeTimeStepper):
     """
     u_t - div(k grad u) = f
@@ -149,10 +140,6 @@ class ImplicitDiffusionStepper(FiredrakeTimeStepper):
         )
 
 
-# ============================================================
-# 3. Utilities: Firedrake <-> torch
-# ============================================================
-
 def firedrake_field_to_torch(u: fd.Function, batched: bool = True) -> torch.Tensor:
     """
     Convert Firedrake Function to torch tensor using Firedrake's helper.
@@ -175,11 +162,6 @@ def append_time_channel(x_tensor: torch.Tensor, t: float) -> torch.Tensor:
         device=x_tensor.device,
     )
     return torch.cat([x_tensor, t_channel], dim=-1)
-
-
-# ============================================================
-# 4. Prediction-correction trainer
-# ============================================================
 
 class FiredrakePINNSBasedSOLTrainer:
     """
@@ -225,7 +207,7 @@ class FiredrakePINNSBasedSOLTrainer:
         features = self.feature_builder(state_tensor, t) # [u x t]
         correction = self.st_model(features).flatten() # [u x t] -> [u]
         corrected = state_tensor + correction
-        return corrected, correction
+        return corrected, correction,features
 
     def forward_prediction_correction_from_state(
         self,
@@ -244,9 +226,9 @@ class FiredrakePINNSBasedSOLTrainer:
             phys_next = self.step_op(current)
 
             current_t = current_t + self.dt
-            corrected, corr = self.correct(phys_next, current_t)
+            corrected, corr, features = self.correct(phys_next, current_t)
 
-            states_in.append(phys_next)
+            states_in.append(features) # states_in.append(XTUp_1)
             states_corr.append(corr)
             states_pred.append(corrected)
 
