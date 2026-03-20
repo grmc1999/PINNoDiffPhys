@@ -117,6 +117,7 @@ class ImplicitDiffusionStepper(FiredrakeTimeStepper):
         self,
         mesh: fd.MeshGeometry,
         dt: float,
+        point_evaluator: np.ndarray = None,
         diffusivity: float = 1.0,
         forcing: float = 0.0,
         degree: int = 1,
@@ -125,7 +126,7 @@ class ImplicitDiffusionStepper(FiredrakeTimeStepper):
         self.degree = degree
         self.k = fd.Constant(diffusivity)
         self.f = fd.Constant(forcing)
-        super().__init__(mesh=mesh, dt=dt, solver_parameters=solver_parameters)
+        super().__init__(mesh=mesh, dt=dt,point_evaluator = point_evaluator, solver_parameters=solver_parameters)
 
     def build_function_space(self, mesh):
         return fd.FunctionSpace(mesh, "CG", self.degree)
