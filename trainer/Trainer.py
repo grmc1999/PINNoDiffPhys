@@ -44,7 +44,7 @@ class FiredrakeTimeStepper(ABC):
 
         if self.point_evaluator != None:
             self.evaluation_shape = self.point_evaluator.shape
-            self.point_evaluator = fd.PointEvaluator(mesh = mesh, points = self.point_evaluator.reshape(3,-1))
+            self.point_evaluator = fd.PointEvaluator(mesh = mesh, points = self.point_evaluator.reshape(mesh.geometric_dimension(),-1))
             #PE.evaluate(xc)
 
     @abstractmethod
