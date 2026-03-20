@@ -93,7 +93,7 @@ class FiredrakeTimeStepper(ABC):
             bcs=self.bcs,
             solver_parameters=self.solver_parameters,
         )
-        if self.point_evaluator != None:
+        if isinstance(self.point_evaluator, np.ndarray):
             u_np1 = fd.assemble(fd.interpolate(u_np1, self.P0DG))
 
         # Reduced functional whose "output" is the field u_{n+1}
