@@ -44,7 +44,7 @@ class FiredrakeTimeStepper(ABC):
 
         if isinstance(self.point_evaluator, np.ndarray):
             self.evaluation_shape = self.point_evaluator.shape
-            self.point_evaluator = fd.PointEvaluator(mesh = mesh, points = self.point_evaluator.reshape(mesh.geometric_dimension(),-1))
+            self.point_evaluator = fd.PointEvaluator(mesh = mesh, points = self.point_evaluator.reshape(-1,mesh.geometric_dimension()))
             #PE.evaluate(xc)
 
     @abstractmethod
