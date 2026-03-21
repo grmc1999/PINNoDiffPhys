@@ -3,9 +3,9 @@ import argparse
 import numpy as np
 import torch
 import firedrake as fd
-from PINNoDiffPhys.DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
-from PINNoDiffPhys.trainer.Trainer import ImplicitDiffusionStepper,FiredrakePINNSBasedSOLTrainerCNN
-from PINNoDiffPhys.DL_models.PINNS.Residual_losses import diffusion_loss
+from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
+from trainer.Trainer import ImplicitDiffusionStepper,FiredrakePINNSBasedSOLTrainerCNN
+from DL_models.PINNS.Residual_losses import diffusion_loss
 
 
 if __name__ == "__main__":
@@ -48,4 +48,4 @@ if __name__ == "__main__":
     )
     T.generate_ground_truth(un,args.num_rollout)
 
-    T.train(epoch = args.n_epochs, batch_size = args.batch_size)
+    T.train(epochs = args.n_epochs, batch_size = args.batch_size)
