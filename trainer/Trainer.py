@@ -204,10 +204,17 @@ class FiredrakePINNSBasedSOLTrainer:
             self.T.append(self.T[-1] + self.dt)
 
     def correct(self, state_tensor: torch.Tensor, t: float) -> Tuple[torch.Tensor, torch.Tensor]:
-        features = self.feature_builder(state_tensor, t).requires_grad_(True) # [u x t]
-        correction = self.st_model(features).flatten() # [u x t] -> [u]
-        corrected = state_tensor + correction
-        return corrected, correction,rearrange(features,"c h w -> 1 (w h) c")
+        # TODO: Model-corrector should implement the coordinate message passing
+        #features = self.feature_builder(state_tensor, t).requires_grad_(True) # [c h w]
+        features = rearrange(self.feature_builder(state_tensor, t),"c h w-> 1 (h w) c").requires_grad_(True)
+        # Reshape
+        #state_tensor = rearrange(state_tensor,"B p->")
+        correction = self.st_model(
+            rearrange(features)
+            ) # [u x t] 
+        corrected = state_tensor + correction # [c h w]
+        corrected = rearrange(corrected,"c h w -> 1 (h w) c") # [b p v]
+        return corrected, correction,rearrange(features,"c h w -> 1 (h w) c")
 
     def forward_prediction_correction_from_state(
         self,
@@ -218,21 +225,24 @@ class FiredrakePINNSBasedSOLTrainer:
         states_corr = []
         states_in = []
 
-        current = state0_tensor
+        current = rearrange(self.feature_builder(state0_tensor,current_t),"c h w -> 1 (h w) c").requires_grad_(True) # [B p] -> [B p v]
         current_t = t0
 
         for _ in range(self.n_steps):
             # Firedrake differentiable step
-            phys_next = self.step_op(current)
+            phys_next = self.step_op(current[:,:,-1]) # [B p]
 
             current_t = current_t + self.dt
-            corrected, corr, features = self.correct(phys_next, current_t)
+            # TODO: Coordinate encoder should be outside of the corrector (model)
+            corrected, corr, features = self.correct(phys_next, current_t) # [b p v], ?, [b p v]
+            # corrected to embeded feature
 
             states_in.append(features) # states_in.append(XTUp_1)
             states_corr.append(corr)
             states_pred.append(corrected)
 
-            current = corrected
+            current = rearrange(self.feature_builder(corrected,current_t),"c h w -> 1 (h w) c").requires_grad_(True)
+            #current = corrected # [B p v]
 
         return states_pred, states_corr, states_in
 
