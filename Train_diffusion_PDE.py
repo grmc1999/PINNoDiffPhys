@@ -2,7 +2,7 @@ from PINNoDiffPhys.DL_models.Models.CNN_models import simple_dual_space_with_tim
 import numpy as np
 import torch
 import firedrake as fd
-from PINNoDiffPhys.trainer.Trainer import ImplicitDiffusionStepper,FiredrakePINNSBasedSOLTrainer
+from PINNoDiffPhys.trainer.Trainer import ImplicitDiffusionStepper,FiredrakePINNSBasedSOLTrainerCNN
 import argparse
 
 if __name__ == "__main__":
@@ -30,3 +30,13 @@ if __name__ == "__main__":
     # Creating IC
     X = fd.SpatialCoordinate(mesh)
     un = fd.Function(ph_model.V).interpolate(0.5*fd.exp(.5*((X[0]-0.5)**2 + (X[1]-0.5)**2 - 0.1)**2 - 1))
+
+    T = FiredrakePINNSBasedSOLTrainerCNN(
+            physical_model = ph_model,
+            statistical_model = st_model,
+            optimizer = torch.optim.Adam(st_model.parameters(),lr=1e-4),
+            simulation_steps = 5,
+            dt = 0.1,
+            loss = lambda u,x: diffusion_loss(u,x,K = 1.0),
+            feature_builder = None,
+    )

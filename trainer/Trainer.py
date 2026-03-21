@@ -265,3 +265,17 @@ class FiredrakePINNSBasedSOLTrainer:
             losses.append(float(total_loss.detach().cpu()))
 
         return losses
+    
+class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
+  def __init__(self,**args):
+    super().__init__(**args)
+    del self.feature_builder
+
+  def feature_builder(self,u,t):
+    u = u.reshape(self.physical_model.evaluation_shape[:-1]+(1,))
+
+    V = fd.VectorFunctionSpace(ph_model.P0DG.mesh(), "DG", 0)
+    X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(ph_model.mesh))) # [eval_points dim]
+    X = X.reshape(self.physical_model.evaluation_shape) # [p_dims x y]
+    t = torch.tile(torch.tensor(t),(ph_model.evaluation_shape[:2])+(1,))
+    return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
