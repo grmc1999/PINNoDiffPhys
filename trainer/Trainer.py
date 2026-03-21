@@ -206,8 +206,8 @@ class FiredrakePINNSBasedSOLTrainer:
     def correct(self, state_tensor: torch.Tensor, t: float) -> Tuple[torch.Tensor, torch.Tensor]:
         features = self.feature_builder(state_tensor, t).requires_grad_(True) # [u x t]
         correction = self.st_model(features).flatten() # [u x t] -> [u]
-        corrected = state_tensor + correction.flatten()
-        return corrected, correction,features
+        corrected = state_tensor + correction
+        return corrected, correction,rearrange(features,"c h w -> (w h) c")
 
     def forward_prediction_correction_from_state(
         self,
