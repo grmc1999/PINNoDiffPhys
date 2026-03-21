@@ -7,7 +7,7 @@ def diffusion_loss(u,xt,K, dim = 2):
     du/dt - k grad u = f
     """
     l = 0
-    return x_grad(u,xt,0,1)[...,-1] - K * x_grad(u,xt,0,1)[...,:dim] # spatial gradient grad u
+    return x_grad(u,xt,0,1)[...,-1] - K * x_grad(u,xt,0,1)[...,:dim].sum(-1) # spatial gradient grad u
 
 def incompresibble_fluid_loss(up,xt,mu=1,rho=1):
     l=0

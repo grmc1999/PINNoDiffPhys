@@ -19,9 +19,14 @@ if __name__ == "__main__":
         np.linspace(0,1,11),
         np.linspace(0,1,11)
         ),axis = -1)
-
+    
+    
     ph_model = ImplicitDiffusionStepper(
         mesh = mesh,
         dt = args.dt,
         point_evaluator = X,
     )
+
+    # Creating IC
+    X = fd.SpatialCoordinate(mesh)
+    un = fd.Function(ph_model.V).interpolate(0.5*fd.exp(.5*((X[0]-0.5)**2 + (X[1]-0.5)**2 - 0.1)**2 - 1))
