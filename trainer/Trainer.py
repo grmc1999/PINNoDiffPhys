@@ -207,7 +207,7 @@ class FiredrakePINNSBasedSOLTrainer:
         features = self.feature_builder(state_tensor, t).requires_grad_(True) # [u x t]
         correction = self.st_model(features).flatten() # [u x t] -> [u]
         corrected = state_tensor + correction
-        return corrected, correction,rearrange(features,"c h w -> (w h) c")
+        return corrected, correction,rearrange(features,"c h w -> 1 (w h) c")
 
     def forward_prediction_correction_from_state(
         self,
