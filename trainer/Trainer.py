@@ -225,8 +225,9 @@ class FiredrakePINNSBasedSOLTrainer:
         states_corr = []
         states_in = []
 
-        current = rearrange(self.feature_builder(state0_tensor,current_t),"c h w -> 1 (h w) c").requires_grad_(True) # [B p] -> [B p v]
         current_t = t0
+        current = rearrange(self.feature_builder(state0_tensor,current_t),"c h w -> 1 (h w) c").requires_grad_(True) # [B p] -> [B p v]
+        
 
         for _ in range(self.n_steps):
             # Firedrake differentiable step
