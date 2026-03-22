@@ -37,7 +37,6 @@ if __name__ == "__main__":
     X = fd.SpatialCoordinate(mesh)
     un = fd.Function(ph_model.V).interpolate(0.5*fd.exp(.5*((X[0]-0.5)**2 + (X[1]-0.5)**2 - 0.1)**2 - 1))
 
-    #breakpoint()
     T = FiredrakePINNSBasedSOLTrainerCNN(
             physical_model = ph_model,
             statistical_model = st_model,

@@ -205,15 +205,11 @@ class FiredrakePINNSBasedSOLTrainer:
 
     def correct(self, state_tensor: torch.Tensor, t: float) -> Tuple[torch.Tensor, torch.Tensor]:
         # TODO: Model-corrector should implement the coordinate message passing
-        #features = self.feature_builder(state_tensor, t).requires_grad_(True) # [c h w]
         features = rearrange(self.feature_builder(state_tensor, t),"c h w-> 1 (h w) c").requires_grad_(True)
-        # Reshape
-        #state_tensor = rearrange(state_tensor,"B p->")
         correction = rearrange(self.st_model(
             rearrange(features,"1 (h w) c -> c h w", h = self.physical_model.evaluation_shape[0] ,w = self.physical_model.evaluation_shape[1])
             ), " c h w -> 1 (h w) c") # [u x t] 
         corrected = features[:,:,-1:] + correction # [c h w]
-        #corrected = rearrange(corrected,"c h w -> 1 (h w) c") # [b p v]
         return corrected, correction, features
 
     def forward_prediction_correction_from_state(
@@ -226,7 +222,6 @@ class FiredrakePINNSBasedSOLTrainer:
         states_in = []
 
         current_t = t0
-        #current = rearrange(self.feature_builder(state0_tensor,current_t),"c h w -> 1 (h w) c").requires_grad_(True) # [B p] -> [B p v]
         current = state0_tensor
         
 
@@ -243,7 +238,6 @@ class FiredrakePINNSBasedSOLTrainer:
             states_corr.append(corr)
             states_pred.append(corrected)
 
-            #current = rearrange(self.feature_builder(corrected,current_t),"c h w -> 1 (h w) c").requires_grad_(True)
             current = corrected[:,:,0] # [B p v]
 
         return states_pred, states_corr, states_in
