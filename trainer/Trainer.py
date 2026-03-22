@@ -210,7 +210,7 @@ class FiredrakePINNSBasedSOLTrainer:
         # Reshape
         #state_tensor = rearrange(state_tensor,"B p->")
         correction = rearrange(self.st_model(
-            rearrange(features,"1 (h w) c -> c h w")
+            rearrange(features,"1 (h w) c -> c h w", h = self.physical_model.evaluation_shape[0] ,w = self.physical_model.evaluation_shape[1])
             ), " c h w -> 1 (h w) c") # [u x t] 
         corrected = state_tensor + correction # [c h w]
         #corrected = rearrange(corrected,"c h w -> 1 (h w) c") # [b p v]
