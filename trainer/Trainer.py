@@ -268,7 +268,7 @@ class FiredrakePINNSBasedSOLTrainer:
 
             total_loss = 0.0
             for u_pred, u_in in zip(batch_pred, batch_in):
-                total_loss = total_loss + self.loss(u_pred.unsqueeze(-1), u_in)
+                total_loss = total_loss + self.loss(u_pred, u_in)
 
             self.optimizer.zero_grad()
             total_loss.backward()
