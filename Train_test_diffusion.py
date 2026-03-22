@@ -376,7 +376,7 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     )
     pred_grids = grids_from_prediction_list(pred_states, fine_grid)
 
-    gt_fields = rollout_ground_truth(test_trainer.ph_model, u0, n_steps=n_steps)
+    gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     gt_grids = grids_from_gt_fields(gt_fields, fine_grid)
 
     report = compute_error_curve(pred_grids, gt_grids)
@@ -412,7 +412,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     )
     pred_grids = grids_from_prediction_list(pred_states, grid)
 
-    gt_fields = rollout_ground_truth(test_trainer.ph_model, u0, n_steps=n_steps)
+    gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     gt_grids = grids_from_gt_fields(gt_fields, grid)
 
     report = compute_error_curve(pred_grids, gt_grids)
@@ -449,7 +449,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     )
     pred_grids = grids_from_prediction_list(pred_states, grid)
 
-    gt_fields = rollout_ground_truth(test_trainer.ph_model, u0, n_steps=n_steps)
+    gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     gt_grids = grids_from_gt_fields(gt_fields, grid)
 
     full_report = compute_error_curve(pred_grids, gt_grids)
@@ -527,7 +527,7 @@ if __name__ == "__main__":
         lr=1e-4,
     )
 
-    u0 = make_ic(train_trainer.ph_model.V)
+    u0 = make_ic(train_trainer.physical_model.V)
 
     train_trainer.generate_ground_truth(u0, args.num_rollout)
     losses = train_trainer.train(epochs=args.n_epochs, batch_size=args.batch_size)
