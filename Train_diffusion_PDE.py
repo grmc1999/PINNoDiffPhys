@@ -37,14 +37,14 @@ if __name__ == "__main__":
     X = fd.SpatialCoordinate(mesh)
     un = fd.Function(ph_model.V).interpolate(0.5*fd.exp(.5*((X[0]-0.5)**2 + (X[1]-0.5)**2 - 0.1)**2 - 1))
 
-    breakpoint()
+    #breakpoint()
     T = FiredrakePINNSBasedSOLTrainerCNN(
             physical_model = ph_model,
             statistical_model = st_model,
             optimizer = torch.optim.Adam(st_model.parameters(),lr=1e-4),
             simulation_steps = 5,
             dt = 0.1,
-            loss = lambda u,x: diffusion_loss(u,x,K = ImplicitDiffusionStepper.k),
+            loss = lambda u,x: diffusion_loss(u,x,K = ph_model.k),
             feature_builder = None,
     )
     T.generate_ground_truth(un,args.num_rollout)
