@@ -209,12 +209,12 @@ class FiredrakePINNSBasedSOLTrainer:
         features = rearrange(self.feature_builder(state_tensor, t),"c h w-> 1 (h w) c").requires_grad_(True)
         # Reshape
         #state_tensor = rearrange(state_tensor,"B p->")
-        correction = self.st_model(
-            rearrange(features)
-            ) # [u x t] 
+        correction = rearrange(self.st_model(
+            rearrange(features,"1 (h w) c -> c h w")
+            ), " c h w -> 1 (h w) c") # [u x t] 
         corrected = state_tensor + correction # [c h w]
-        corrected = rearrange(corrected,"c h w -> 1 (h w) c") # [b p v]
-        return corrected, correction,rearrange(features,"c h w -> 1 (h w) c")
+        #corrected = rearrange(corrected,"c h w -> 1 (h w) c") # [b p v]
+        return corrected, correction, features
 
     def forward_prediction_correction_from_state(
         self,
@@ -226,7 +226,8 @@ class FiredrakePINNSBasedSOLTrainer:
         states_in = []
 
         current_t = t0
-        current = rearrange(self.feature_builder(state0_tensor,current_t),"c h w -> 1 (h w) c").requires_grad_(True) # [B p] -> [B p v]
+        #current = rearrange(self.feature_builder(state0_tensor,current_t),"c h w -> 1 (h w) c").requires_grad_(True) # [B p] -> [B p v]
+        current = state0_tensor
         
 
         for _ in range(self.n_steps):
@@ -242,8 +243,8 @@ class FiredrakePINNSBasedSOLTrainer:
             states_corr.append(corr)
             states_pred.append(corrected)
 
-            current = rearrange(self.feature_builder(corrected,current_t),"c h w -> 1 (h w) c").requires_grad_(True)
-            #current = corrected # [B p v]
+            #current = rearrange(self.feature_builder(corrected,current_t),"c h w -> 1 (h w) c").requires_grad_(True)
+            current = corrected # [B p v]
 
         return states_pred, states_corr, states_in
 
