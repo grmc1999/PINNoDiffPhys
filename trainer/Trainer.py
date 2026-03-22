@@ -232,7 +232,7 @@ class FiredrakePINNSBasedSOLTrainer:
 
         for _ in range(self.n_steps):
             # Firedrake differentiable step
-            phys_next = self.step_op(current[:,:,-1]) # [B p]
+            phys_next = self.step_op(current) # [B p]
 
             current_t = current_t + self.dt
             # TODO: Coordinate encoder should be outside of the corrector (model)
