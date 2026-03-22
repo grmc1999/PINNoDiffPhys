@@ -244,7 +244,7 @@ class FiredrakePINNSBasedSOLTrainer:
             states_pred.append(corrected)
 
             #current = rearrange(self.feature_builder(corrected,current_t),"c h w -> 1 (h w) c").requires_grad_(True)
-            current = corrected # [B p v]
+            current = corrected[:,:,0] # [B p v]
 
         return states_pred, states_corr, states_in
 

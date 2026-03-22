@@ -6,12 +6,6 @@ def diffusion_loss(u,xt,K, dim = 2):
     """"
     du/dt - k grad u = f
     """
-    print('u')
-    print(u.shape)
-    print("x")
-    print(xt.shape)
-    print(x_grad(u,xt,0,1).shape)
-    print(x_grad(u,xt,0,1)[...,:dim].shape)
     return x_grad(u,xt,0,1)[...,-1] - K * torch.sum(x_grad(u,xt,0,1)[...,:dim], axis = -1) # spatial gradient grad u
 
 def incompresibble_fluid_loss(up,xt,mu=1,rho=1):
