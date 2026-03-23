@@ -215,40 +215,40 @@ def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
     return trainer
 
 
-def predict_rollout(trainer, u0: fd.Function, t0: float, n_steps: int):
-    """
-    Uses the trainer's internal forward_prediction_correction().
-
-    Returns:
-        pred_states : corrected predicted states
-        input_states: corresponding trainer inputs used in loss(u, x)
-        corr_states : corrections
-        times       : times of predicted states
-    """
-    old_n_steps = trainer.n_steps
-    trainer.n_steps = n_steps
-
-    with torch.no_grad():
-        states_pred, states_corr, states_in = trainer.forward_prediction_correction_from_state(
-            fd.ml.pytorch.to_torch(u0),t0)
-        uncorrected_sol = list(fd.ml.pytoch.from_torch(pred - corr) for pred, corr in zip(states_pred, states_corr))
-        # convert to function
-        # over sample
-
-    trainer.n_steps = old_n_steps
-
-    # If implementation includes corrected initial state, align lengths
-    if len(states_pred) == n_steps + 1:
-        states_pred = states_pred[1:]
-
-    if len(states_in) > len(states_pred):
-        states_in = states_in[-len(states_pred):]
-
-    if len(states_corr) > len(states_pred):
-        states_corr = states_corr[-len(states_pred):]
-
-    times = [t0 + (k + 1) * trainer.dt for k in range(len(states_pred))]
-    return states_pred, states_in, states_corr, times
+#def predict_rollout(trainer, u0: fd.Function, t0: float, n_steps: int):
+#    """
+#    Uses the trainer's internal forward_prediction_correction().
+#
+#    Returns:
+#        pred_states : corrected predicted states
+#        input_states: corresponding trainer inputs used in loss(u, x)
+#        corr_states : corrections
+#        times       : times of predicted states
+#    """
+#    old_n_steps = trainer.n_steps
+#    trainer.n_steps = n_steps
+#
+#    with torch.no_grad():
+#        states_pred, states_corr, states_in = trainer.forward_prediction_correction_from_state(
+#            fd.ml.pytorch.to_torch(u0),t0)
+#        uncorrected_sol = list(fd.ml.pytoch.from_torch(pred - corr) for pred, corr in zip(states_pred, states_corr))
+#        # convert to function
+#        # over sample
+#
+#    trainer.n_steps = old_n_steps
+#
+#    # If implementation includes corrected initial state, align lengths
+#    if len(states_pred) == n_steps + 1:
+#        states_pred = states_pred[1:]
+#
+#    if len(states_in) > len(states_pred):
+#        states_in = states_in[-len(states_pred):]
+#
+#    if len(states_corr) > len(states_pred):
+#        states_corr = states_corr[-len(states_pred):]
+#
+#    times = [t0 + (k + 1) * trainer.dt for k in range(len(states_pred))]
+#    return states_pred, states_in, states_corr, times
 
 
 def grids_from_prediction_list(pred_states, point_grid):
@@ -364,19 +364,20 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     Same dt and same time horizon, but denser spatial point sampling.
     """
     fine_grid = make_point_grid(args.spatial_test_n)
+    grid = make_point_grid(args.train_grid_n)
     n_steps = args.num_rollout
 
     test_trainer = build_trainer(
         mesh=mesh,
-        point_grid=fine_grid, # Use same grid
+        point_grid=grid, # Use same grid
         dt=args.dt,
         simulation_steps=n_steps,
         st_model=trained_model,
         lr=0.0,
     )
 
-    pred_states, input_states, corr_states, pred_times = predict_rollout( # Output should be in original resolution
-        test_trainer, u0, t0=0.0, n_steps=n_steps
+    pred_states, input_states, corr_states, pred_times = test_trainer.predict_rollout( # Output should be in original resolution
+        u0, t0=0.0, n_steps=n_steps
     )
     pred_grids = grids_from_prediction_list(pred_states, fine_grid)
 
@@ -411,8 +412,8 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
         lr=0.0,
     )
 
-    pred_states, input_states, corr_states, pred_times = predict_rollout( # Output should be in original resolution
-        test_trainer, u0, t0=0.0, n_steps=n_steps
+    pred_states, input_states, corr_states, pred_times = test_trainer.predict_rollout( # Output should be in original resolution
+        u0, t0=0.0, n_steps=n_steps
     )
     pred_grids = grids_from_prediction_list(pred_states, grid)
 
@@ -448,8 +449,8 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
         lr=0.0,
     )
 
-    pred_states, input_states, corr_states, pred_times = predict_rollout( # Output should be in original resolution
-        test_trainer, u0, t0=0.0, n_steps=n_steps
+    pred_states, input_states, corr_states, pred_times = test_trainer.predict_rollout( # Output should be in original resolution
+        u0, t0=0.0, n_steps=n_steps
     )
     pred_grids = grids_from_prediction_list(pred_states, grid)
 
