@@ -289,7 +289,7 @@ class FiredrakePINNSBasedSOLTrainer:
         with torch.no_grad():
             states_pred, states_corr, states_in = self.forward_prediction_correction_from_state(
                 fd.ml.pytorch.to_torch(u0),t0)
-            uncorrected_sol = list(fd.ml.pytoch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
+            uncorrected_sol = list(fd.ml.pytorch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
             # over sample
             if isinstance(spatial_sample,np.ndarray):
                 vom = fd.VertexOnlyMesh(
