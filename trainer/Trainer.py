@@ -341,7 +341,7 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
     super().__init__(**args)
     del self.feature_builder
 
-  def feature_builder(self,u,t):
+  def feature_builder(self,u: torch.Tensor,t: float):
     u = u.reshape(self.physical_model.evaluation_shape[:-1]+(1,))
 
     V = fd.VectorFunctionSpace(self.physical_model.P0DG.mesh(), "DG", 0)
