@@ -286,29 +286,29 @@ class FiredrakePINNSBasedSOLTrainer:
         old_n_steps = self.n_steps
         self.n_steps = n_steps
 
-        with torch.no_grad():
-            states_pred, states_corr, states_in = self.forward_prediction_correction_from_state(
-                fd.ml.pytorch.to_torch(u0),t0)
-            uncorrected_sol = list(fd.ml.pytorch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
-            # over sample
-            if isinstance(spatial_sample,np.ndarray):
-                vom = fd.VertexOnlyMesh(
-                                    self.V.mesh(),
-                                    spatial_sample.reshape(-1,self.V.mesh().geometric_dimension()),
-                                    reorder = False
-                                    )
-                P0DG_ = fd.FunctionSpace(vom, "DG", 0)
-                uncorrected_sol = list(
-                    self.feature_builder_finer(
-                        fd.ml.pytorch.to_torch(
-                            fd.assemble(
-                                fd.interpolate(u_sol, P0DG_)
+        #with torch.no_grad():
+        states_pred, states_corr, states_in = self.forward_prediction_correction_from_state(
+            fd.ml.pytorch.to_torch(u0),t0)
+        uncorrected_sol = list(fd.ml.pytorch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
+        # over sample
+        if isinstance(spatial_sample,np.ndarray):
+            vom = fd.VertexOnlyMesh(
+                                self.V.mesh(),
+                                spatial_sample.reshape(-1,self.V.mesh().geometric_dimension()),
+                                reorder = False
                                 )
-                                ), (t0 + self.physical_model.dt*(i+1))
-                                ) for i,u_sol in enumerate(uncorrected_sol))
-                
-                states_pred = list(u_sol + self.st_model(u_sol) for u_sol in uncorrected_sol)
-                # CHECK SHAPE
+            P0DG_ = fd.FunctionSpace(vom, "DG", 0)
+            uncorrected_sol = list(
+                self.feature_builder_finer(
+                    fd.ml.pytorch.to_torch(
+                        fd.assemble(
+                            fd.interpolate(u_sol, P0DG_)
+                            )
+                            ), (t0 + self.physical_model.dt*(i+1))
+                            ) for i,u_sol in enumerate(uncorrected_sol))
+            
+            states_pred = list(u_sol + self.st_model(u_sol) for u_sol in uncorrected_sol)
+            # CHECK SHAPE
                 
             
 
