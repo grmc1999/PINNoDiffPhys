@@ -300,7 +300,14 @@ class FiredrakePINNSBasedSOLTrainer:
                 P0DG_ = fd.FunctionSpace(vom, "DG", 0)
                 uncorrected_sol = list(
                     self.feature_builder_finer(
-                        fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_))), (t0 + self.physical_model.dt*(i+1))) for i,u_sol in enumerate(uncorrected_sol))
+                        fd.ml.pytorch.to_torch(
+                            fd.assemble(
+                                fd.interpolate(u_sol, P0DG_)
+                                )
+                                ), (t0 + self.physical_model.dt*(i+1))
+                                ) for i,u_sol in enumerate(uncorrected_sol))
+                
+                states_pred = list(u_sol + self.st_model(u_sol) for u_sol in uncorrected_sol)
                 
             
 
