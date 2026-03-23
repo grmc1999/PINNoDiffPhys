@@ -293,8 +293,8 @@ class FiredrakePINNSBasedSOLTrainer:
         # over sample
         if isinstance(spatial_sample,np.ndarray):
             vom = fd.VertexOnlyMesh(
-                                self.V.mesh(),
-                                spatial_sample.reshape(-1,self.V.mesh().geometric_dimension()),
+                                self.physical_model.V.mesh(),
+                                spatial_sample.reshape(-1,self.physical_model.V.mesh().geometric_dimension()),
                                 reorder = False
                                 )
             P0DG_ = fd.FunctionSpace(vom, "DG", 0)
