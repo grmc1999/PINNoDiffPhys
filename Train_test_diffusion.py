@@ -341,7 +341,7 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     )
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
-        u0, t0=0.0, n_steps=n_steps
+        u0, t0=0.0, n_steps=n_steps, spatial_sample=fine_grid
     )
     pred_grids = grids_from_prediction_list(pred_states, grid)
 
@@ -377,7 +377,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     )
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
-        u0, t0=0.0, n_steps=n_steps
+        u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
     pred_grids = grids_from_prediction_list(pred_states, grid)
 
@@ -385,7 +385,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
 
     #report = compute_error_curve(pred_grids, gt_grids)
-    report = compute_residual_curve(test_trainer, pred_states, input_states)
+    report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
 
     #report.update(residual_report)
     report["times"] = np.asarray(pred_times)
@@ -414,7 +414,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     )
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
-        u0, t0=0.0, n_steps=n_steps
+        u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
     pred_grids = grids_from_prediction_list(pred_states, grid)
 
@@ -422,7 +422,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
 
     #full_report = compute_error_curve(pred_grids, gt_grids)
-    report = compute_residual_curve(test_trainer, pred_states, input_states)
+    report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
 
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
