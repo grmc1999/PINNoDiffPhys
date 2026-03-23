@@ -229,7 +229,8 @@ def predict_rollout(trainer, u0: fd.Function, t0: float, n_steps: int):
     trainer.n_steps = n_steps
 
     with torch.no_grad():
-        states_pred, states_corr, states_in = trainer.forward_prediction_correction_from_state(u0,t0)
+        states_pred, states_corr, states_in = trainer.forward_prediction_correction_from_state(
+            fd.ml.pytorch.to_torch(u0),t0)
 
     trainer.n_steps = old_n_steps
 
