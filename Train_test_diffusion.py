@@ -343,18 +343,18 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps
     )
-    pred_grids = grids_from_prediction_list(pred_states, fine_grid)
+    #pred_grids = grids_from_prediction_list(pred_states, fine_grid)
 
-    gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
-    gt_grids = grids_from_gt_fields(gt_fields, fine_grid)
+    #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
+    #gt_grids = grids_from_gt_fields(gt_fields, fine_grid)
 
-    report = compute_error_curve(pred_grids, gt_grids)
-    residual_report = compute_residual_curve(test_trainer, pred_states, input_states)
+    #report = compute_error_curve(pred_grids, gt_grids)
+    report = compute_residual_curve(test_trainer, pred_states, input_states)
 
-    report.update(residual_report)
+    #report.update(residual_report)
     report["times"] = np.asarray(pred_times)
-    report["pred_grids"] = pred_grids
-    report["gt_grids"] = gt_grids
+    #report["pred_grids"] = pred_grids
+    #report["gt_grids"] = gt_grids
     return report
 
 
@@ -379,19 +379,19 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps
     )
-    pred_grids = grids_from_prediction_list(pred_states, grid)
+    #pred_grids = grids_from_prediction_list(pred_states, grid)
 
-    gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
-    gt_grids = grids_from_gt_fields(gt_fields, grid)
+    #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
+    #gt_grids = grids_from_gt_fields(gt_fields, grid)
 
-    report = compute_error_curve(pred_grids, gt_grids)
-    residual_report = compute_residual_curve(test_trainer, pred_states, input_states)
+    #report = compute_error_curve(pred_grids, gt_grids)
+    report = compute_residual_curve(test_trainer, pred_states, input_states)
 
-    report.update(residual_report)
+    #report.update(residual_report)
     report["times"] = np.asarray(pred_times)
     report["dt_test"] = dt_test
-    report["pred_grids"] = pred_grids
-    report["gt_grids"] = gt_grids
+    #report["pred_grids"] = pred_grids
+    #report["gt_grids"] = gt_grids
     return report
 
 
@@ -416,41 +416,33 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps
     )
-    pred_grids = grids_from_prediction_list(pred_states, grid)
+    #pred_grids = grids_from_prediction_list(pred_states, grid)
 
-    gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
-    gt_grids = grids_from_gt_fields(gt_fields, grid)
+    #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
+    #gt_grids = grids_from_gt_fields(gt_fields, grid)
 
-    full_report = compute_error_curve(pred_grids, gt_grids)
-    residual_report = compute_residual_curve(test_trainer, pred_states, input_states)
+    #full_report = compute_error_curve(pred_grids, gt_grids)
+    report = compute_residual_curve(test_trainer, pred_states, input_states)
 
-    full_report.update(residual_report)
-    full_report["times"] = np.asarray(pred_times)
-    full_report["pred_grids"] = pred_grids
-    full_report["gt_grids"] = gt_grids
+    report["times"] = np.asarray(pred_times)
+    #full_report["pred_grids"] = pred_grids
+    #full_report["gt_grids"] = gt_grids
 
     mask = np.asarray(pred_times) > train_horizon
 
     extra_report = {
         "times": np.asarray(pred_times)[mask],
-        "rmse": full_report["rmse"][mask],
-        "rel_rmse": full_report["rel_rmse"][mask],
-        "linf": full_report["linf"][mask],
-        "residual": full_report["residual"][mask],
-        "rmse_mean": float(np.mean(full_report["rmse"][mask])),
-        "rmse_last": float(full_report["rmse"][mask][-1]),
-        "rel_rmse_mean": float(np.mean(full_report["rel_rmse"][mask])),
-        "rel_rmse_last": float(full_report["rel_rmse"][mask][-1]),
-        "linf_max": float(np.max(full_report["linf"][mask])),
-        "residual_mean": float(np.mean(full_report["residual"][mask])),
-        "residual_last": float(full_report["residual"][mask][-1]),
-        "residual_max": float(np.max(full_report["residual"][mask])),
-        "pred_grids": [g for g, keep in zip(pred_grids, mask) if keep],
-        "gt_grids": [g for g, keep in zip(gt_grids, mask) if keep],
+        #"rmse": report["rmse"][mask],
+        #"rel_rmse": report["rel_rmse"][mask],
+        "linf": report["linf"][mask],
+        "residual": report["residual"][mask],
+        "residual_mean": float(np.mean(report["residual"][mask])),
+        "residual_last": float(report["residual"][mask][-1]),
+        "residual_max": float(np.max(report["residual"][mask])),
         "train_horizon": train_horizon,
         "test_horizon": test_horizon,
     }
-    return extra_report, full_report
+    return extra_report, report
 
 
 # ============================================================
@@ -567,65 +559,95 @@ if __name__ == "__main__":
     # --------------------------------------------------------
     # Posterior testing plot
     # --------------------------------------------------------
-    posterior_curves = {
-        "spatial interpolation": {
-            "times": spatial_report["times"],
-            "rel_rmse": spatial_report["rel_rmse"],
-        },
-        "temporal interpolation": {
-            "times": temporal_interp_report["times"],
-            "rel_rmse": temporal_interp_report["rel_rmse"],
-        },
-        "temporal extrapolation": {
-            "times": temporal_extra_full_report["times"],
-            "rel_rmse": temporal_extra_full_report["rel_rmse"],
-        },
-    }
+    #posterior_curves = {
+    #    "spatial interpolation": {
+    #        "times": spatial_report["times"],
+    #        "rel_rmse": spatial_report["rel_rmse"],
+    #    },
+    #    "temporal interpolation": {
+    #        "times": temporal_interp_report["times"],
+    #        "rel_rmse": temporal_interp_report["rel_rmse"],
+    #    },
+    #    "temporal extrapolation": {
+    #        "times": temporal_extra_full_report["times"],
+    #        "rel_rmse": temporal_extra_full_report["rel_rmse"],
+    #    },
+    #}
 
-    plot_error_curves(
-        posterior_curves,
-        os.path.join(args.output_dir, "posterior_test_error_curves.png"),
+    posterior_residual_curves = {
+    "spatial interpolation": {
+        "times": spatial_report["times"],
+        "residual": spatial_report["residual"],
+    },
+    "temporal interpolation": {
+        "times": temporal_interp_report["times"],
+        "residual": temporal_interp_report["residual"],
+    },
+    "temporal extrapolation": {
+        "times": temporal_extra_full_report["times"],
+        "residual": temporal_extra_full_report["residual"],
+    },
+}
+
+    plot_residual_curves(
+        posterior_residual_curves,
+        os.path.join(args.output_dir, "posterior_test_residual_curves.png"),
         train_horizon=args.num_rollout * args.dt,
     )
+
+#    plot_error_curves(
+#        posterior_curves,
+#        os.path.join(args.output_dir, "posterior_test_error_curves.png"),
+#        train_horizon=args.num_rollout * args.dt,
+#    )
 
     # --------------------------------------------------------
     # Save quantitative summaries
     # --------------------------------------------------------
     summary = {
-        "training": {
-            "epochs": args.n_epochs,
-            "batch_size": args.batch_size,
-            "dt_train": args.dt,
-            "num_rollout_train": args.num_rollout,
-            "train_grid_n": args.train_grid_n,
-            "final_loss": float(losses[-1]) if len(losses) > 0 else None,
-        },
-        "spatial_interpolation": {
-            "grid_test_n": args.spatial_test_n,
-            "rmse_mean": spatial_report["rmse_mean"],
-            "rmse_last": spatial_report["rmse_last"],
-            "rel_rmse_mean": spatial_report["rel_rmse_mean"],
-            "rel_rmse_last": spatial_report["rel_rmse_last"],
-            "linf_max": spatial_report["linf_max"],
-        },
-        "temporal_interpolation": {
-            "dt_test": temporal_interp_report["dt_test"],
-            "rmse_mean": temporal_interp_report["rmse_mean"],
-            "rmse_last": temporal_interp_report["rmse_last"],
-            "rel_rmse_mean": temporal_interp_report["rel_rmse_mean"],
-            "rel_rmse_last": temporal_interp_report["rel_rmse_last"],
-            "linf_max": temporal_interp_report["linf_max"],
-        },
-        "temporal_extrapolation": {
-            "train_horizon": temporal_extra_report["train_horizon"],
-            "test_horizon": temporal_extra_report["test_horizon"],
-            "rmse_mean": temporal_extra_report["rmse_mean"],
-            "rmse_last": temporal_extra_report["rmse_last"],
-            "rel_rmse_mean": temporal_extra_report["rel_rmse_mean"],
-            "rel_rmse_last": temporal_extra_report["rel_rmse_last"],
-            "linf_max": temporal_extra_report["linf_max"],
-        },
-    }
+    "training": {
+        "epochs": args.n_epochs,
+        "batch_size": args.batch_size,
+        "dt_train": args.dt,
+        "num_rollout_train": args.num_rollout,
+        "train_grid_n": args.train_grid_n,
+        "final_loss": float(losses[-1]) if len(losses) > 0 else None,
+    },
+    "spatial_interpolation": {
+        "grid_test_n": args.spatial_test_n,
+        #"rmse_mean": spatial_report["rmse_mean"],
+        #"rmse_last": spatial_report["rmse_last"],
+        #"rel_rmse_mean": spatial_report["rel_rmse_mean"],
+        #"rel_rmse_last": spatial_report["rel_rmse_last"],
+        "linf_max": spatial_report["linf_max"],
+        "residual_mean": spatial_report["residual_mean"],
+        "residual_last": spatial_report["residual_last"],
+        "residual_max": spatial_report["residual_max"],
+    },
+    "temporal_interpolation": {
+        "dt_test": temporal_interp_report["dt_test"],
+        #"rmse_mean": temporal_interp_report["rmse_mean"],
+        #"rmse_last": temporal_interp_report["rmse_last"],
+        #"rel_rmse_mean": temporal_interp_report["rel_rmse_mean"],
+        #"rel_rmse_last": temporal_interp_report["rel_rmse_last"],
+        #"linf_max": temporal_interp_report["linf_max"],
+        "residual_mean": temporal_interp_report["residual_mean"],
+        "residual_last": temporal_interp_report["residual_last"],
+        "residual_max": temporal_interp_report["residual_max"],
+    },
+    "temporal_extrapolation": {
+        "train_horizon": temporal_extra_report["train_horizon"],
+        #"test_horizon": temporal_extra_report["test_horizon"],
+        #"rmse_mean": temporal_extra_report["rmse_mean"],
+        #"rmse_last": temporal_extra_report["rmse_last"],
+        #"rel_rmse_mean": temporal_extra_report["rel_rmse_mean"],
+        #"rel_rmse_last": temporal_extra_report["rel_rmse_last"],
+        #"linf_max": temporal_extra_report["linf_max"],
+        "residual_mean": temporal_extra_report["residual_mean"],
+        "residual_last": temporal_extra_report["residual_last"],
+        "residual_max": temporal_extra_report["residual_max"],
+    },
+}
 
     save_report_json(summary, os.path.join(args.output_dir, "summary.json"))
 

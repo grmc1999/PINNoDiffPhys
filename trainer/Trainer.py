@@ -308,6 +308,7 @@ class FiredrakePINNSBasedSOLTrainer:
                                 ) for i,u_sol in enumerate(uncorrected_sol))
                 
                 states_pred = list(u_sol + self.st_model(u_sol) for u_sol in uncorrected_sol)
+                # CHECK SHAPE
                 
             
 
