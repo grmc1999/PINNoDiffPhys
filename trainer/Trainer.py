@@ -298,16 +298,27 @@ class FiredrakePINNSBasedSOLTrainer:
                                 reorder = False
                                 )
             P0DG_ = fd.FunctionSpace(vom, "DG", 0)
-            uncorrected_sol = list(
+
+            # List[ [b x y (xytv)] ] - [b x y (xytv) t]
+            uncorrected_sol_h = torch.stack(list(
                 self.feature_builder_finer(
                     fd.ml.pytorch.to_torch(
                         fd.assemble(
                             fd.interpolate(u_sol, P0DG_)
                             )
                             ), (t0 + self.physical_model.dt*(i+1))
-                            ) for i,u_sol in enumerate(uncorrected_sol))
+                            ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
-            states_pred = list(u_sol + self.st_model(u_sol) for u_sol in uncorrected_sol)
+            uncorrected_sol = rearrange(uncorrected_sol_h, "x y V t -> t (x y V)")
+            
+            print("from predict uncorrected_sol")
+            print(uncorrected_sol[0].shape)
+
+            states_pred = list(u_sol + \
+                               rearrange(self.st_model(rearrange(u_sol,"(x y V) -> V x y",
+                                                               x = spatial_sample.shape[0],
+                                                               y = spatial_sample.shape[1],
+                                                               V = 1))," x y V -> (x y V)") for u_sol in uncorrected_sol)
             # CHECK SHAPE
             print("from predict rollout")
             print(states_pred[0].shape)

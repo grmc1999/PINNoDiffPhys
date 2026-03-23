@@ -137,9 +137,9 @@ def compute_residual_curve(trainer, pred_states, input_states):
             val = trainer.loss(u_pred, x_in)
 
             if torch.is_tensor(val):
-                val = float(val.detach().cpu().item())
+                val = float(torch.mean(val).detach().cpu().item())
             else:
-                val = float(val)
+                val = float(torch.mean(val))
 
             residual_values.append(val)
 
@@ -209,7 +209,7 @@ def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
         optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
         simulation_steps=simulation_steps,
         dt=dt,
-        loss=lambda u, x: torch.mean(diffusion_loss(u, x, K=1.0)),
+        loss=lambda u, x: diffusion_loss(u, x, K=1.0),
         feature_builder=None,
     )
     return trainer
@@ -343,17 +343,17 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps
     )
-    #pred_grids = grids_from_prediction_list(pred_states, fine_grid)
+    pred_grids = grids_from_prediction_list(pred_states, grid)
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, fine_grid)
 
     #report = compute_error_curve(pred_grids, gt_grids)
-    report = compute_residual_curve(test_trainer, pred_states, input_states)
+    report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
 
     #report.update(residual_report)
     report["times"] = np.asarray(pred_times)
-    #report["pred_grids"] = pred_grids
+    report["pred_grids"] = pred_grids
     #report["gt_grids"] = gt_grids
     return report
 
@@ -379,7 +379,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps
     )
-    #pred_grids = grids_from_prediction_list(pred_states, grid)
+    pred_grids = grids_from_prediction_list(pred_states, grid)
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
@@ -390,7 +390,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     #report.update(residual_report)
     report["times"] = np.asarray(pred_times)
     report["dt_test"] = dt_test
-    #report["pred_grids"] = pred_grids
+    report["pred_grids"] = pred_grids
     #report["gt_grids"] = gt_grids
     return report
 
@@ -416,7 +416,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps
     )
-    #pred_grids = grids_from_prediction_list(pred_states, grid)
+    pred_grids = grids_from_prediction_list(pred_states, grid)
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
@@ -425,7 +425,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     report = compute_residual_curve(test_trainer, pred_states, input_states)
 
     report["times"] = np.asarray(pred_times)
-    #full_report["pred_grids"] = pred_grids
+    report["pred_grids"] = pred_grids
     #full_report["gt_grids"] = gt_grids
 
     mask = np.asarray(pred_times) > train_horizon
