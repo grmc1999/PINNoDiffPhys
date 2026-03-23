@@ -306,7 +306,7 @@ class FiredrakePINNSBasedSOLTrainer:
                         fd.assemble(
                             fd.interpolate(u_sol, P0DG_)
                             )
-                            ), (t0 + self.physical_model.dt*(i+1))
+                            ), (t0 + self.physical_model.dt*(i+1)),spatial_sample
                             ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
             uncorrected_sol = rearrange(uncorrected_sol_h, "x y V t -> t (x y V)")
@@ -354,12 +354,12 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
     t = torch.tile(torch.tensor(t),(self.physical_model.evaluation_shape[:2])+(1,))
     return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
   
-  def feature_builder_finer(self,u,t):
-    u = u.reshape(self.physical_model.evaluation_shape[:-1]+(1,))
+  def feature_builder_finer(self,u,t,eval_points):
+    u = u.reshape(eval_points.shape[:-1]+(1,))
 
     #V = fd.VectorFunctionSpace(finer_V.mesh(), "DG", 0)
     V = fd.VectorFunctionSpace(u.function_space.mesh(), "DG", 0)
     X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(self.physical_model.mesh))) # [eval_points dim]
-    X = X.reshape(self.physical_model.evaluation_shape) # [p_dims x y]
-    t = torch.tile(torch.tensor(t),(self.physical_model.evaluation_shape[:2])+(1,))
+    X = X.reshape(eval_points.shape) # [p_dims x y]
+    t = torch.tile(torch.tensor(t),(eval_points.shape[:2])+(1,))
     return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
