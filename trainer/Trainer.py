@@ -272,6 +272,51 @@ class FiredrakePINNSBasedSOLTrainer:
 
         return losses
     
+
+    def predict_rollout(self, u0: fd.Function, t0: float, n_steps: int, spatial_sample: Optional[np.ndarray] = None):
+        """
+        Uses the trainer's internal forward_prediction_correction().
+
+        Returns:
+            pred_states : corrected predicted states
+            input_states: corresponding trainer inputs used in loss(u, x)
+            corr_states : corrections
+            times       : times of predicted states
+        """
+        old_n_steps = self.n_steps
+        self.n_steps = n_steps
+
+        with torch.no_grad():
+            states_pred, states_corr, states_in = self.forward_prediction_correction_from_state(
+                fd.ml.pytorch.to_torch(u0),t0)
+            uncorrected_sol = list(fd.ml.pytoch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
+            # over sample
+            if isinstance(spatial_sample,np.ndarray):
+                vom = fd.VertexOnlyMesh(
+                                    self.V.mesh(),
+                                    spatial_sample.reshape(-1,self.V.mesh().geometric_dimension()),
+                                    reorder = False
+                                    )
+                P0DG_ = fd.FunctionSpace(vom, "DG", 0)
+                uncorrected_sol = list(fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_))) for u_sol in uncorrected_sol)
+                # To feature input
+            
+
+        self.n_steps = old_n_steps
+
+        # If implementation includes corrected initial state, align lengths
+        if len(states_pred) == n_steps + 1:
+            states_pred = states_pred[1:]
+
+        if len(states_in) > len(states_pred):
+            states_in = states_in[-len(states_pred):]
+
+        if len(states_corr) > len(states_pred):
+            states_corr = states_corr[-len(states_pred):]
+
+        times = [t0 + (k + 1) * self.dt for k in range(len(states_pred))]
+        return states_pred, states_in, states_corr, times
+    
 class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
   def __init__(self,**args):
     super().__init__(**args)
