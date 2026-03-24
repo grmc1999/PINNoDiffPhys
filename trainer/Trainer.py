@@ -305,7 +305,7 @@ class FiredrakePINNSBasedSOLTrainer:
                         fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_))), (t0 + self.physical_model.dt.values()*(i+1)), spatial_sample, P0DG_
                             ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
-            uncorrected_sol = rearrange(uncorrected_sol_h, "x y V t -> t (x y) V")
+            uncorrected_sol = rearrange(uncorrected_sol_h, "V x y t -> t (x y) V")
             
             print("from predict uncorrected_sol")
             print(uncorrected_sol[0].shape)
