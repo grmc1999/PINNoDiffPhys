@@ -247,8 +247,8 @@ def plot_residual(report, output_path, title):
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     
     im0 = axes[0].plot(report["times"], report["residual_decay"])
-    axes[0].xlabel("Time")
-    axes[0].ylabel("Residual loss")
+    axes[0].set_xlabel("Time")
+    axes[0].set_ylabel("Residual loss")
     axes[0].set_title(f"time MSE residual \n")
     plt.grid(True, alpha=0.3)
 
