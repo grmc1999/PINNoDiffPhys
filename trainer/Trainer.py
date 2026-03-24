@@ -302,7 +302,7 @@ class FiredrakePINNSBasedSOLTrainer:
             # List[ [b x y (xytv)] ] - [b x y (xytv) t]
             uncorrected_sol_h = torch.stack(list(
                 self.feature_builder_finer(
-                        fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_)), (t0 + self.physical_model.dt*(i+1))),spatial_sample, P0DG_
+                        fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_))), (t0 + self.physical_model.dt*(i+1)),spatial_sample, P0DG_
                             ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
             uncorrected_sol = rearrange(uncorrected_sol_h, "x y V t -> t (x y V)")
