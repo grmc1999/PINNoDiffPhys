@@ -44,33 +44,33 @@ def make_ic(V):
     return u0
 
 
-def evaluate_field_on_grid(field: fd.Function, point_grid: np.ndarray) -> np.ndarray:
-    """
-    Evaluate a Firedrake field on a regular point grid using PointEvaluator.
-
-    Returns:
-        values with shape [H, W] for scalar fields.
-    """
-    points = point_grid.reshape(-1, point_grid.shape[-1])
-    pe = fd.PointEvaluator(field.function_space().mesh(), points)
-    values = pe.evaluate(field)
-
-    vom = fd.VertexOnlyMesh(
-        field.function_space().mesh(),
-        points.reshape(-1,field.function_space().mesh().geometric_dimension()),
-        reorder = False
-    )
-    
-    field = fd.assemble(fd.interpolate(field, fd.FunctionSpace(vom, "DG", 0)))
-
-    values = field.dat.data
-    if values.ndim == 1:
-        return values.reshape(point_grid.shape[:2])
-    elif values.ndim == 2 and values.shape[-1] == 1:
-        return values[:, 0].reshape(point_grid.shape[:2])
-    else:
-        # vector/tensor fallback
-        return values.reshape(point_grid.shape[:2] + values.shape[1:])
+#def evaluate_field_on_grid(field: fd.Function, point_grid: np.ndarray) -> np.ndarray:
+#    """
+#    Evaluate a Firedrake field on a regular point grid using PointEvaluator.
+#
+#    Returns:
+#        values with shape [H, W] for scalar fields.
+#    """
+#    points = point_grid.reshape(-1, point_grid.shape[-1])
+#    pe = fd.PointEvaluator(field.function_space().mesh(), points)
+#    values = pe.evaluate(field)
+#
+#    vom = fd.VertexOnlyMesh(
+#        field.function_space().mesh(),
+#        points.reshape(-1,field.function_space().mesh().geometric_dimension()),
+#        reorder = False
+#    )
+#    
+#    field = fd.assemble(fd.interpolate(field, fd.FunctionSpace(vom, "DG", 0)))
+#
+#    values = field.dat.data
+#    if values.ndim == 1:
+#        return values.reshape(point_grid.shape[:2])
+#    elif values.ndim == 2 and values.shape[-1] == 1:
+#        return values[:, 0].reshape(point_grid.shape[:2])
+#    else:
+#        # vector/tensor fallback
+#        return values.reshape(point_grid.shape[:2] + values.shape[1:])
 
 
 def tensor_state_to_grid(state_tensor, grid_shape):
@@ -94,29 +94,19 @@ def compute_residual_curve(trainer, pred_states, input_states):
     Returns:
         dict with per-step residual values and summary statistics
     """
-    residual_values = []
-
-    #with torch.no_grad():
-        #for u_pred, x_in in zip(pred_states, input_states): # should have B no need for indexing loop
-            #val = trainer.loss(u_pred, x_in)
-    breakpoint() # Check  pred_states, input_states SHAPES
     val = trainer.loss(pred_states, input_states)
-    print(val.shape)
-    breakpoint()
-    #val = list(map(lambda p,i: trainer.loss(p.unsqueeze(0),i.unsqueeze(0)),pred_states, input_states))
-    if torch.is_tensor(val):
-        val = float(torch.mean(val).detach().cpu().item())
-    else:
-        val = float(torch.mean(val))
-    residual_values.append(val)
 
-    residual_values = np.asarray(residual_values, dtype=float)
+    if torch.is_tensor(val):
+        val_h = torch.mean(val,axis = 0 ).detach().cpu().item().numpy()
+    else:
+        val_h = torch.mean(val,axis = 0 ).numpy()
 
     return {
-        "residual": residual_values,
-        "residual_mean": float(np.mean(residual_values)),
-        "residual_last": float(residual_values[-1]),
-        "residual_max": float(np.max(residual_values)),
+        "residual": val,
+        "residual_decay": val_h,
+        "residual_mean": float(np.mean(val_h)),
+        "residual_last": float(val_h[-1]),
+        "residual_max": float(np.max(val_h)),
     }
 
 def compute_error_curve(pred_grids, gt_grids, eps=1e-12):
@@ -187,8 +177,8 @@ def grids_from_prediction_list(pred_states, point_grid):
     return [tensor_state_to_grid(s, (H, W)) for s in pred_states]
 
 
-def grids_from_gt_fields(gt_fields, point_grid):
-    return [evaluate_field_on_grid(f, point_grid) for f in gt_fields]
+#def grids_from_gt_fields(gt_fields, point_grid):
+#    return [evaluate_field_on_grid(f, point_grid) for f in gt_fields]
 
 
 # ============================================================
@@ -244,12 +234,35 @@ def plot_error_curves(time_dict, output_path, train_horizon=None):
     plt.savefig(output_path, dpi=200)
     plt.close()
 
+def plot_residual(report, output_path):
+    #{
+    #    "residual": val,
+    #    "residual_decay": val_h,
+    #    "residual_mean": float(np.mean(val_h)),
+    #    "residual_last": float(val_h[-1]),
+    #    "residual_max": float(np.max(val_h)),
+    #}
+    
 
-#spatial_report["gt_grids"][-1],
-#spatial_report["pred_grids"][-1],
-#spatial_report["times"][-1],
-#title="Spatial interpolation test",
-#output_path=os.path.join(args.output_dir, "snapshot_spatial_interpolation.png"),
+    fig, axes = plt.subplots(2, 3, figsize=(12, 4))
+    breakpoint()
+    im0 = axes[0,0].plot(report["residual_decay"], origin="lower", extent=(0, 1, 0, 1))
+    axes[0].set_title(f"Ground truth\n t={time_value:.4f}")
+    plt.colorbar(im0, ax=axes[0], fraction=0.046)
+
+    im1 = axes[1].imshow(pred, origin="lower", extent=(0, 1, 0, 1), vmin=emin, vmax=vmax)
+    axes[1].set_title("Prediction")
+    plt.colorbar(im1, ax=axes[1], fraction=0.046)
+
+    im2 = axes[2].imshow(err, origin="lower", extent=(0, 1, 0, 1))
+    axes[2].set_title("|Error|")
+    plt.colorbar(im2, ax=axes[2], fraction=0.046)
+
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+
 
 def plot_snapshot_(gt, pred, time_value, title, output_path):
     err = np.abs(pred - gt)
@@ -318,16 +331,10 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     )
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], fine_grid.shape[:2])
 
-    #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
-    #gt_grids = grids_from_gt_fields(gt_fields, fine_grid)
-
-    #report = compute_error_curve(pred_grids, gt_grids)
     report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
 
-    #report.update(residual_report)
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
-    #report["gt_grids"] = gt_grids
     return report
 
 
@@ -354,17 +361,11 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     )
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], grid.shape[:2])
 
-    #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
-    #gt_grids = grids_from_gt_fields(gt_fields, grid)
-
-    #report = compute_error_curve(pred_grids, gt_grids)
     report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
 
-    #report.update(residual_report)
     report["times"] = np.asarray(pred_times)
     report["dt_test"] = dt_test
     report["pred_grids"] = pred_grids
-    #report["gt_grids"] = gt_grids
     return report
 
 
@@ -389,13 +390,8 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
-    #pred_grids = grids_from_prediction_list(pred_states[:,-1], grid)
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], grid.shape[:2])
 
-    #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
-    #gt_grids = grids_from_gt_fields(gt_fields, grid)
-
-    #full_report = compute_error_curve(pred_grids, gt_grids)
     report = compute_residual_curve(test_trainer, pred_states[:,:,[-1]], uncorrected_sol)
 
     report["times"] = np.asarray(pred_times)
@@ -406,8 +402,6 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
 
     extra_report = {
         "times": np.asarray(pred_times)[mask],
-        #"rmse": report["rmse"][mask],
-        #"rel_rmse": report["rel_rmse"][mask],
         "linf": report["linf"][mask],
         "residual": report["residual"][mask],
         "residual_mean": float(np.mean(report["residual"][mask])),
@@ -486,6 +480,8 @@ if __name__ == "__main__":
         args=args,
     )
 
+    plot_residual(spatial_report, "spatial_interpolation.png")
+
     # --------------------------------------------------------
     # 2. Temporal interpolation
     # --------------------------------------------------------
@@ -496,6 +492,8 @@ if __name__ == "__main__":
         args=args,
     )
 
+    plot_residual(spatial_report, "temporal_interpolation.png")
+
     # --------------------------------------------------------
     # 3. Temporal extrapolation
     # --------------------------------------------------------
@@ -505,6 +503,8 @@ if __name__ == "__main__":
         u0=u0,
         args=args,
     )
+
+    plot_residual(spatial_report, "temporal_extrapolation.png")
 
     # --------------------------------------------------------
     # Posterior testing plot
