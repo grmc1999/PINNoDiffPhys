@@ -387,7 +387,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
 
     #full_report = compute_error_curve(pred_grids, gt_grids)
-    report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
+    report = compute_residual_curve(test_trainer, pred_states[:,:,[-1]], uncorrected_sol)
 
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
