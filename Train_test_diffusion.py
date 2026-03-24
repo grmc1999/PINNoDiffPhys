@@ -256,7 +256,7 @@ def plot_residual(report, output_path, title):
     axes[1].set_title("Residual spatial mal at t = 0")
     plt.colorbar(im1, ax=axes[1], fraction=0.046)
 
-    im2 = axes[2].imshow(report["residual"][-1].reshape(), origin="lower", extent=(0, 1, 0, 1))
+    im2 = axes[2].imshow(report["residual"][-1].reshape(report["grid_shape"][:2]), origin="lower", extent=(0, 1, 0, 1))
     axes[1].set_title("Residual spatial mal at t = T")
     plt.colorbar(im2, ax=axes[2], fraction=0.046)
 
