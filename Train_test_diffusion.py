@@ -85,43 +85,7 @@ def tensor_state_to_grid(state_tensor, grid_shape):
       [1, H*W, 1]
       [H*W, 1]
     """
-    if isinstance(state_tensor, fd.Function):
-        raise TypeError("Expected tensor-like prediction, got Firedrake Function.")
-
-    arr = state_tensor.detach().cpu().numpy()
-
-    if arr.ndim == 4:
-        # [B, C, H, W]
-        if arr.shape[0] == 1 and arr.shape[1] == 1:
-            return arr[0, 0]
-        if arr.shape[0] == 1:
-            return arr[0, 0]
-        raise ValueError(f"Unsupported 4D tensor shape: {arr.shape}")
-
-    if arr.ndim == 3:
-        # [1, H, W] or [1, N, 1]
-        if arr.shape[0] == 1 and arr.shape[1:] == grid_shape:
-            return arr[0]
-        if arr.shape[0] == 1 and arr.shape[-1] == 1:
-            return arr[0, :, 0].reshape(grid_shape)
-        if arr.shape[-1] == 1 and arr.shape[:2] == grid_shape:
-            return arr[..., 0]
-        raise ValueError(f"Unsupported 3D tensor shape: {arr.shape}")
-
-    if arr.ndim == 2:
-        # [H, W] or [N, 1]
-        if arr.shape == grid_shape:
-            return arr
-        if arr.shape[-1] == 1 and arr.shape[0] == grid_shape[0] * grid_shape[1]:
-            return arr[:, 0].reshape(grid_shape)
-        raise ValueError(f"Unsupported 2D tensor shape: {arr.shape}")
-
-    if arr.ndim == 1:
-        if arr.shape[0] == grid_shape[0] * grid_shape[1]:
-            return arr.reshape(grid_shape)
-        raise ValueError(f"Unsupported 1D tensor shape: {arr.shape}")
-
-    raise ValueError(f"Unsupported tensor shape: {arr.shape}")
+    state_tensor.reshape(grid_shape)
 
 def compute_residual_curve(trainer, pred_states, input_states):
     """
@@ -343,7 +307,7 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=fine_grid
     )
-    pred_grids = grids_from_prediction_list(pred_states, grid)
+    pred_grids = grids_from_prediction_list(pred_states, fine_grid.shape[:2])
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, fine_grid)
@@ -379,7 +343,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
-    pred_grids = grids_from_prediction_list(pred_states, grid)
+    pred_grids = grids_from_prediction_list(pred_states, grid.shape[:2])
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
@@ -416,7 +380,8 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
-    pred_grids = grids_from_prediction_list(pred_states, grid)
+    #pred_grids = grids_from_prediction_list(pred_states, grid)
+    pred_grids = grids_from_prediction_list(pred_states, grid.shape[:2])
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, grid)

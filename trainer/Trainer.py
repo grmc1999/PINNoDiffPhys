@@ -314,7 +314,7 @@ class FiredrakePINNSBasedSOLTrainer:
                                rearrange(self.st_model(rearrange(u_sol,"(x y) V -> V x y",
                                                                x = spatial_sample.shape[0],
                                                                y = spatial_sample.shape[1],
-                                                               V = (self.physical_model.V.mesh().geometric_dimension() + 1) # TODO: extend to multiple output space
+                                                               V = (self.physical_model.V.mesh().geometric_dimension() + 1 + 1) # TODO: extend to multiple output space
                                                                ))," V x y -> (x y) V") for u_sol in uncorrected_sol)
             # CHECK SHAPE
             print("from predict rollout")
