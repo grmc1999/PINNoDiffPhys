@@ -307,7 +307,7 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=fine_grid
     )
-    pred_grids = grids_from_prediction_list(pred_states[:,-1], fine_grid.shape[:2])
+    pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], fine_grid.shape[:2])
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, fine_grid)
@@ -343,7 +343,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
-    pred_grids = grids_from_prediction_list(pred_states[:,-1], grid.shape[:2])
+    pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], grid.shape[:2])
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
@@ -381,7 +381,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
     #pred_grids = grids_from_prediction_list(pred_states[:,-1], grid)
-    pred_grids = grids_from_prediction_list(pred_states[:,:,-1], grid.shape[:2])
+    pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], grid.shape[:2])
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, grid)
