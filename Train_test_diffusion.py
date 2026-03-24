@@ -503,7 +503,7 @@ if __name__ == "__main__":
     # --------------------------------------------------------
     # 3. Temporal extrapolation
     # --------------------------------------------------------
-    temporal_extra_report, temporal_extra_full_report = run_temporal_extrapolation_experiment(
+    temporal_extra_report = run_temporal_extrapolation_experiment(
         mesh=mesh,
         trained_model=st_model,
         u0=u0,
