@@ -262,7 +262,7 @@ class FiredrakePINNSBasedSOLTrainer:
 
             total_loss = 0.0
             for u_pred, u_in in zip(batch_pred, batch_in):
-                total_loss = total_loss + torch.sum(self.loss(u_pred, u_in))
+                total_loss = total_loss + torch.mean(self.loss(u_pred, u_in))
 
             self.optimizer.zero_grad()
             total_loss.backward()
@@ -290,7 +290,6 @@ class FiredrakePINNSBasedSOLTrainer:
         states_pred, states_corr, states_in = self.forward_prediction_correction_from_state(
             fd.ml.pytorch.to_torch(u0),t0)
         #uncorrected_sol = list(fd.ml.pytorch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
-        breakpoint()
         uncorrected_sol = list(fd.ml.pytorch.from_torch(state_in[:,:,-1], self.physical_model.V) for state_in in states_in)
         # over sample
         if isinstance(spatial_sample,np.ndarray):
@@ -308,9 +307,6 @@ class FiredrakePINNSBasedSOLTrainer:
                             ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
             uncorrected_sol = rearrange(uncorrected_sol_h, "V x y t -> t (x y) V")
-            
-            print("from predict uncorrected_sol")
-            print(uncorrected_sol[0].shape)
 
             states_pred = list(u_sol + \
                                rearrange(self.st_model(rearrange(u_sol,"(x y) V -> V x y",
@@ -320,9 +316,6 @@ class FiredrakePINNSBasedSOLTrainer:
                                                                ))," V x y -> (x y) V") for u_sol in uncorrected_sol)
             
             states_pred = torch.stack(states_pred,axis = 0) # [t p V]
-            # CHECK SHAPE
-            print("from predict rollout")
-            print(states_pred[0].shape)
                 
             
 

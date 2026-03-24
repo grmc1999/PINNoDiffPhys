@@ -99,7 +99,11 @@ def compute_residual_curve(trainer, pred_states, input_states):
     #with torch.no_grad():
         #for u_pred, x_in in zip(pred_states, input_states): # should have B no need for indexing loop
             #val = trainer.loss(u_pred, x_in)
+    breakpoint() # Check  pred_states, input_states SHAPES
     val = trainer.loss(pred_states, input_states)
+    print(val.shape)
+    breakpoint()
+    #val = list(map(lambda p,i: trainer.loss(p.unsqueeze(0),i.unsqueeze(0)),pred_states, input_states))
     if torch.is_tensor(val):
         val = float(torch.mean(val).detach().cpu().item())
     else:
@@ -172,7 +176,7 @@ def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
         optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
         simulation_steps=simulation_steps,
         dt=dt,
-        loss=lambda u, x: torch.mean((diffusion_loss(u, x, K=1.0))**2),
+        loss=lambda u, x: (diffusion_loss(u, x, K=1.0))**2,
         feature_builder=None,
     )
     return trainer
@@ -241,7 +245,13 @@ def plot_error_curves(time_dict, output_path, train_horizon=None):
     plt.close()
 
 
-def plot_snapshot(gt, pred, time_value, title, output_path):
+#spatial_report["gt_grids"][-1],
+#spatial_report["pred_grids"][-1],
+#spatial_report["times"][-1],
+#title="Spatial interpolation test",
+#output_path=os.path.join(args.output_dir, "snapshot_spatial_interpolation.png"),
+
+def plot_snapshot_(gt, pred, time_value, title, output_path):
     err = np.abs(pred - gt)
     vmax = max(float(np.max(gt)), float(np.max(pred)))
     emin = float(np.min([gt.min(), pred.min()]))
@@ -476,14 +486,6 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_snapshot(
-        spatial_report["gt_grids"][-1],
-        spatial_report["pred_grids"][-1],
-        spatial_report["times"][-1],
-        title="Spatial interpolation test",
-        output_path=os.path.join(args.output_dir, "snapshot_spatial_interpolation.png"),
-    )
-
     # --------------------------------------------------------
     # 2. Temporal interpolation
     # --------------------------------------------------------
@@ -494,14 +496,6 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_snapshot(
-        temporal_interp_report["gt_grids"][-1],
-        temporal_interp_report["pred_grids"][-1],
-        temporal_interp_report["times"][-1],
-        title="Temporal interpolation test",
-        output_path=os.path.join(args.output_dir, "snapshot_temporal_interpolation.png"),
-    )
-
     # --------------------------------------------------------
     # 3. Temporal extrapolation
     # --------------------------------------------------------
@@ -510,14 +504,6 @@ if __name__ == "__main__":
         trained_model=st_model,
         u0=u0,
         args=args,
-    )
-
-    plot_snapshot(
-        temporal_extra_report["gt_grids"][-1],
-        temporal_extra_report["pred_grids"][-1],
-        temporal_extra_report["times"][-1],
-        title="Temporal extrapolation test",
-        output_path=os.path.join(args.output_dir, "snapshot_temporal_extrapolation.png"),
     )
 
     # --------------------------------------------------------
