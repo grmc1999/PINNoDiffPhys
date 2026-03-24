@@ -102,7 +102,7 @@ def compute_residual_curve(trainer, pred_states, input_states):
         val_h = torch.mean(val,axis = -1 ).numpy()
 
     return {
-        "residual": val,
+        "residual": val.detach().cpu().numpy(),
         "residual_decay": val_h,
         "residual_mean": float(np.mean(val_h)),
         "residual_last": float(val_h[-1]),
