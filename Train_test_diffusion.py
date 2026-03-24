@@ -246,17 +246,17 @@ def plot_residual(report, output_path, title):
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     
-    im0 = axes[0,0].plot(report["times"], report["residual_decay"])
+    im0 = axes[0].plot(report["times"], report["residual_decay"])
     plt.xlabel("Time")
     plt.ylabel("Residual loss")
     axes[0].set_title(f"time MSE residual \n")
     plt.grid(True, alpha=0.3)
 
-    im1 = axes[0,1].imshow(report["residual"][0].reshape(report["grid_shape"][:2]), origin="lower", extent=(0, 1, 0, 1))
+    im1 = axes[1].imshow(report["residual"][0].reshape(report["grid_shape"][:2]), origin="lower", extent=(0, 1, 0, 1))
     axes[1].set_title("Residual spatial mal at t = 0")
     plt.colorbar(im1, ax=axes[1], fraction=0.046)
 
-    im2 = axes[0,2].imshow(report["residual"][-1].reshape(), origin="lower", extent=(0, 1, 0, 1))
+    im2 = axes[2].imshow(report["residual"][-1].reshape(), origin="lower", extent=(0, 1, 0, 1))
     axes[1].set_title("Residual spatial mal at t = T")
     plt.colorbar(im2, ax=axes[2], fraction=0.046)
 
