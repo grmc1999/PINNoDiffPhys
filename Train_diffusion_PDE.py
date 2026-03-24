@@ -43,7 +43,7 @@ if __name__ == "__main__":
             optimizer = torch.optim.Adam(st_model.parameters(),lr=1e-4),
             simulation_steps = 5,
             dt = 0.1,
-            loss = lambda u,x: torch.mean(diffusion_loss(u,x,K = 1.0)),
+            loss = lambda u,x: torch.mean(diffusion_loss(u,x,K = 1.0)**2),
             feature_builder = None,
     )
     T.generate_ground_truth(un,args.num_rollout)

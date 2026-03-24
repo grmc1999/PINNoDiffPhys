@@ -238,7 +238,7 @@ class FiredrakePINNSBasedSOLTrainer:
             states_corr.append(corr)
             states_pred.append(corrected)
 
-            current = corrected[:,:,0] # [B p v]
+            current = corrected[:,:,0] # [B p v] # "squeeze"
 
         return states_pred, states_corr, states_in
 
