@@ -381,7 +381,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
     )
     #pred_grids = grids_from_prediction_list(pred_states[:,-1], grid)
-    pred_grids = grids_from_prediction_list(pred_states[:,-1], grid.shape[:2])
+    pred_grids = grids_from_prediction_list(pred_states[:,:,-1], grid.shape[:2])
 
     #gt_fields = rollout_ground_truth(test_trainer.physical_model, u0, n_steps=n_steps)
     #gt_grids = grids_from_gt_fields(gt_fields, grid)

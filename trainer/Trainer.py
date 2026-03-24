@@ -316,6 +316,8 @@ class FiredrakePINNSBasedSOLTrainer:
                                                                y = spatial_sample.shape[1],
                                                                V = (self.physical_model.V.mesh().geometric_dimension() + 1 + 1) # TODO: extend to multiple output space
                                                                ))," V x y -> (x y) V") for u_sol in uncorrected_sol)
+            
+            states_pred = torch.stack(states_pred,axis = 0) # [t p V]
             # CHECK SHAPE
             print("from predict rollout")
             print(states_pred[0].shape)
