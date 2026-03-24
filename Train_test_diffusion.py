@@ -172,7 +172,7 @@ def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
         optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
         simulation_steps=simulation_steps,
         dt=dt,
-        loss=lambda u, x: diffusion_loss(u, x, K=1.0),
+        loss=lambda u, x: torch.mean((diffusion_loss(u, x, K=1.0))**2),
         feature_builder=None,
     )
     return trainer
