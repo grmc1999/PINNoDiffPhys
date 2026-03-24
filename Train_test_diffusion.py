@@ -96,15 +96,15 @@ def compute_residual_curve(trainer, pred_states, input_states):
     """
     residual_values = []
 
-    with torch.no_grad():
+    #with torch.no_grad():
         #for u_pred, x_in in zip(pred_states, input_states): # should have B no need for indexing loop
             #val = trainer.loss(u_pred, x_in)
-        val = trainer.loss(pred_states, input_states)
-        if torch.is_tensor(val):
-            val = float(torch.mean(val).detach().cpu().item())
-        else:
-            val = float(torch.mean(val))
-        residual_values.append(val)
+    val = trainer.loss(pred_states, input_states)
+    if torch.is_tensor(val):
+        val = float(torch.mean(val).detach().cpu().item())
+    else:
+        val = float(torch.mean(val))
+    residual_values.append(val)
 
     residual_values = np.asarray(residual_values, dtype=float)
 
