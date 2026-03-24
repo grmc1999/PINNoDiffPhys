@@ -302,7 +302,7 @@ class FiredrakePINNSBasedSOLTrainer:
             # List[ [b x y (xytv)] ] - [b x y (xytv) t]
             uncorrected_sol_h = torch.stack(list(
                 self.feature_builder_finer(
-                        fd.assemble(fd.interpolate(u_sol, P0DG_)), (t0 + self.physical_model.dt*(i+1)),spatial_sample
+                        fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_)), (t0 + self.physical_model.dt*(i+1))),spatial_sample, P0DG_
                             ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
             uncorrected_sol = rearrange(uncorrected_sol_h, "x y V t -> t (x y V)")
@@ -350,12 +350,11 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
     t = torch.tile(torch.tensor(t),(self.physical_model.evaluation_shape[:2])+(1,))
     return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
   
-  def feature_builder_finer(self,u,t,eval_points):
+  def feature_builder_finer(self,u: torch.Tensor, t: float, eval_points: np.ndarray, fs: fd.FunctionSpace):
     u = u.reshape(eval_points.shape[:-1]+(1,))
 
-    #V = fd.VectorFunctionSpace(finer_V.mesh(), "DG", 0)
     V = fd.VectorFunctionSpace(u.function_space.mesh(), "DG", 0)
-    X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(self.physical_model.mesh))) # [eval_points dim]
+    X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(fs.mesh))) # [eval_points dim]
     X = X.reshape(eval_points.shape) # [p_dims x y]
     t = torch.tile(torch.tensor(t),(eval_points.shape[:2])+(1,))
     return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
