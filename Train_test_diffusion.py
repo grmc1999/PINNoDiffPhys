@@ -97,7 +97,7 @@ def compute_residual_curve(trainer, pred_states, input_states):
     val = trainer.loss(pred_states, input_states)
 
     if torch.is_tensor(val):
-        val_h = torch.mean(val,axis = 0 ).detach().cpu().item().numpy()
+        val_h = torch.mean(val,axis = 0 ).detach().cpu().numpy()
     else:
         val_h = torch.mean(val,axis = 0 ).numpy()
 
