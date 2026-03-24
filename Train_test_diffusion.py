@@ -234,19 +234,14 @@ def plot_error_curves(time_dict, output_path, train_horizon=None):
     plt.savefig(output_path, dpi=200)
     plt.close()
 
-def plot_residual(report, output_path, title):
-    #{
-    #    "residual": val,
-    #    "residual_decay": val_h,
-    #    "residual_mean": float(np.mean(val_h)),
-    #    "residual_last": float(val_h[-1]),
-    #    "residual_max": float(np.max(val_h)),
-    #}
-    
+def plot_residual(report, output_path, title, test_limit = None):
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     
     im0 = axes[0].plot(report["times"], report["residual_decay"])
+    if isinstance(test_limit,float):
+        axes[0].axvline(x=test_limit, color='r', linestyle='--', label='extrapolation horizon')
+
     axes[0].set_xlabel("Time")
     axes[0].set_ylabel("Residual loss")
     axes[0].set_title(f"time MSE residual \n")
@@ -258,31 +253,6 @@ def plot_residual(report, output_path, title):
 
     im2 = axes[2].imshow(report["residual"][-1].reshape(report["grid_shape"][:2]), origin="lower", extent=(0, 1, 0, 1))
     axes[1].set_title("Residual spatial mal at t = T")
-    plt.colorbar(im2, ax=axes[2], fraction=0.046)
-
-    fig.suptitle(title)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=200)
-    plt.close(fig)
-
-
-def plot_snapshot_(gt, pred, time_value, title, output_path):
-    err = np.abs(pred - gt)
-    vmax = max(float(np.max(gt)), float(np.max(pred)))
-    emin = float(np.min([gt.min(), pred.min()]))
-
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-    im0 = axes[0].imshow(gt, origin="lower", extent=(0, 1, 0, 1), vmin=emin, vmax=vmax)
-    
-    axes[0].set_title(f"Ground truth\n t={time_value:.4f}")
-    plt.colorbar(im0, ax=axes[0], fraction=0.046)
-
-    im1 = axes[1].imshow(pred, origin="lower", extent=(0, 1, 0, 1), vmin=emin, vmax=vmax)
-    axes[1].set_title("Prediction")
-    plt.colorbar(im1, ax=axes[1], fraction=0.046)
-
-    im2 = axes[2].imshow(err, origin="lower", extent=(0, 1, 0, 1))
-    axes[2].set_title("|Error|")
     plt.colorbar(im2, ax=axes[2], fraction=0.046)
 
     fig.suptitle(title)
@@ -402,20 +372,9 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
     report["grid_shape"] = grid.shape
+    report["train_horizon"] = train_horizon
+    report["test_horizon"] = test_horizon
 
-    mask = np.asarray(pred_times) > train_horizon
-
-    #extra_report = {
-    #    "times": np.asarray(pred_times)[mask],
-    #    "linf": report["linf"][mask],
-    #    "residual": report["residual"][mask],
-    #    "residual_mean": float(np.mean(report["residual"][mask])),
-    #    "residual_last": float(report["residual"][mask][-1]),
-    #    "residual_max": float(np.max(report["residual"][mask])),
-    #    "train_horizon": train_horizon,
-    #    "test_horizon": test_horizon,
-    #}
-    #return extra_report, report
     return report
 
 
@@ -486,7 +445,10 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(spatial_report, os.path.join(args.output_dir, "spatial_interpolation.png"), title = "spatial interpolation")
+    plot_residual(spatial_report,
+                os.path.join(args.output_dir, "spatial_interpolation.png"),
+                title = "spatial interpolation"
+                )
 
     # --------------------------------------------------------
     # 2. Temporal interpolation
@@ -498,7 +460,10 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(temporal_interp_report, os.path.join(args.output_dir, "temporal_interpolation.png"), title = "temporal interpolation")
+    plot_residual(temporal_interp_report,
+                os.path.join(args.output_dir, "temporal_interpolation.png"),
+                title = "temporal interpolation"
+                )
 
     # --------------------------------------------------------
     # 3. Temporal extrapolation
@@ -510,7 +475,11 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(temporal_extra_report, os.path.join(args.output_dir, "temporal_extrapolation.png"), title = "temporal extarpolation")
+    plot_residual(temporal_extra_report,
+                os.path.join(args.output_dir, "temporal_extrapolation.png"),
+                title = "temporal extarpolation",
+                test_limit=float(temporal_extra_report["train_horizon"])
+                )
 
     # --------------------------------------------------------
     # Posterior testing plot
@@ -540,8 +509,8 @@ if __name__ == "__main__":
         "residual": temporal_interp_report["residual"],
     },
     "temporal extrapolation": {
-        "times": temporal_extra_full_report["times"],
-        "residual": temporal_extra_full_report["residual"],
+        "times": temporal_extra_report["times"],
+        "residual": temporal_extra_report["residual"],
     },
 }
 
@@ -551,11 +520,6 @@ if __name__ == "__main__":
         train_horizon=args.num_rollout * args.dt,
     )
 
-#    plot_error_curves(
-#        posterior_curves,
-#        os.path.join(args.output_dir, "posterior_test_error_curves.png"),
-#        train_horizon=args.num_rollout * args.dt,
-#    )
 
     # --------------------------------------------------------
     # Save quantitative summaries
