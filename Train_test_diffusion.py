@@ -250,7 +250,7 @@ def plot_residual(report, output_path, title):
     axes[0].set_xlabel("Time")
     axes[0].set_ylabel("Residual loss")
     axes[0].set_title(f"time MSE residual \n")
-    plt.grid(True, alpha=0.3)
+    axes[0].grid(True, alpha=0.3)
 
     im1 = axes[1].imshow(report["residual"][0].reshape(report["grid_shape"][:2]), origin="lower", extent=(0, 1, 0, 1))
     axes[1].set_title("Residual spatial mal at t = 0")
