@@ -234,7 +234,7 @@ def plot_error_curves(time_dict, output_path, train_horizon=None):
     plt.savefig(output_path, dpi=200)
     plt.close()
 
-def plot_residual(report, output_path):
+def plot_residual(report, output_path, title):
     #{
     #    "residual": val,
     #    "residual_decay": val_h,
@@ -246,16 +246,19 @@ def plot_residual(report, output_path):
 
     fig, axes = plt.subplots(2, 3, figsize=(12, 4))
     breakpoint()
-    im0 = axes[0,0].plot(report["residual_decay"], origin="lower", extent=(0, 1, 0, 1))
-    axes[0].set_title(f"Ground truth\n t={time_value:.4f}")
-    plt.colorbar(im0, ax=axes[0], fraction=0.046)
+    
+    im0 = axes[0,0].plot(report["times"], report["residual_decay"])
+    plt.xlabel("Time")
+    plt.ylabel("Residual loss")
+    axes[0].set_title(f"time MSE residual \n")
+    plt.grid(True, alpha=0.3)
 
-    im1 = axes[1].imshow(pred, origin="lower", extent=(0, 1, 0, 1), vmin=emin, vmax=vmax)
-    axes[1].set_title("Prediction")
+    im1 = axes[0,1].imshow(report["residual"][0].reshape(report["grid_shape"][:2]), origin="lower", extent=(0, 1, 0, 1))
+    axes[1].set_title("Residual spatial mal at t = 0")
     plt.colorbar(im1, ax=axes[1], fraction=0.046)
 
-    im2 = axes[2].imshow(err, origin="lower", extent=(0, 1, 0, 1))
-    axes[2].set_title("|Error|")
+    im2 = axes[1,0].imshow(report["residual"][-1].reshape(), origin="lower", extent=(0, 1, 0, 1))
+    axes[1].set_title("Residual spatial mal at t = T")
     plt.colorbar(im2, ax=axes[2], fraction=0.046)
 
     fig.suptitle(title)
@@ -271,6 +274,7 @@ def plot_snapshot_(gt, pred, time_value, title, output_path):
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     im0 = axes[0].imshow(gt, origin="lower", extent=(0, 1, 0, 1), vmin=emin, vmax=vmax)
+    
     axes[0].set_title(f"Ground truth\n t={time_value:.4f}")
     plt.colorbar(im0, ax=axes[0], fraction=0.046)
 
@@ -335,6 +339,7 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
 
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
+    report["grid_shape"] = fine_grid.shape
     return report
 
 
@@ -366,6 +371,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     report["times"] = np.asarray(pred_times)
     report["dt_test"] = dt_test
     report["pred_grids"] = pred_grids
+    report["grid_shape"] = grid.shape
     return report
 
 
@@ -396,7 +402,7 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
 
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
-    #full_report["gt_grids"] = gt_grids
+    report["grid_shape"] = grid.shape
 
     mask = np.asarray(pred_times) > train_horizon
 
