@@ -247,8 +247,8 @@ def plot_residual(report, output_path, title):
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     
     im0 = axes[0].plot(report["times"], report["residual_decay"])
-    plt.xlabel("Time")
-    plt.ylabel("Residual loss")
+    axes[0].xlabel("Time")
+    axes[0].ylabel("Residual loss")
     axes[0].set_title(f"time MSE residual \n")
     plt.grid(True, alpha=0.3)
 
@@ -405,17 +405,18 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
 
     mask = np.asarray(pred_times) > train_horizon
 
-    extra_report = {
-        "times": np.asarray(pred_times)[mask],
-        "linf": report["linf"][mask],
-        "residual": report["residual"][mask],
-        "residual_mean": float(np.mean(report["residual"][mask])),
-        "residual_last": float(report["residual"][mask][-1]),
-        "residual_max": float(np.max(report["residual"][mask])),
-        "train_horizon": train_horizon,
-        "test_horizon": test_horizon,
-    }
-    return extra_report, report
+    #extra_report = {
+    #    "times": np.asarray(pred_times)[mask],
+    #    "linf": report["linf"][mask],
+    #    "residual": report["residual"][mask],
+    #    "residual_mean": float(np.mean(report["residual"][mask])),
+    #    "residual_last": float(report["residual"][mask][-1]),
+    #    "residual_max": float(np.max(report["residual"][mask])),
+    #    "train_horizon": train_horizon,
+    #    "test_horizon": test_horizon,
+    #}
+    #return extra_report, report
+    return report
 
 
 # ============================================================
@@ -497,7 +498,7 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(spatial_report, "temporal_interpolation.png", title = "temporal interpolation")
+    plot_residual(temporal_interp_report, "temporal_interpolation.png", title = "temporal interpolation")
 
     # --------------------------------------------------------
     # 3. Temporal extrapolation
@@ -509,7 +510,7 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(spatial_report, "temporal_extrapolation.png", title = "temporal extarpolation")
+    plot_residual(temporal_extra_report, "temporal_extrapolation.png", title = "temporal extarpolation")
 
     # --------------------------------------------------------
     # Posterior testing plot
