@@ -486,7 +486,7 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(spatial_report, "spatial_interpolation.png", title = "spatial interpolation")
+    plot_residual(spatial_report, os.path.join(args.output_dir, "spatial_interpolation.png"), title = "spatial interpolation")
 
     # --------------------------------------------------------
     # 2. Temporal interpolation
@@ -498,7 +498,7 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(temporal_interp_report, "temporal_interpolation.png", title = "temporal interpolation")
+    plot_residual(temporal_interp_report, os.path.join(args.output_dir, "temporal_interpolation.png"), title = "temporal interpolation")
 
     # --------------------------------------------------------
     # 3. Temporal extrapolation
@@ -510,7 +510,7 @@ if __name__ == "__main__":
         args=args,
     )
 
-    plot_residual(temporal_extra_report, "temporal_extrapolation.png", title = "temporal extarpolation")
+    plot_residual(temporal_extra_report, os.path.join(args.output_dir, "temporal_extrapolation.png"), title = "temporal extarpolation")
 
     # --------------------------------------------------------
     # Posterior testing plot
