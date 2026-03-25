@@ -11,7 +11,7 @@ import firedrake as fd
 
 from firedrake.adjoint import Control, ReducedFunctional
 from firedrake.ml.pytorch.fem_operator import fem_operator, to_torch
-
+from tqdm import tqdm
 class FiredrakeTimeStepper(ABC):
     """
     Abstract differentiable Firedrake time-stepper.
@@ -99,6 +99,140 @@ class FiredrakeTimeStepper(ABC):
         red = ReducedFunctional(u_np1, Control(u_n))
         fd.adjoint.stop_annotating()
         return fem_operator(red)
+
+from __future__ import annotations
+
+from typing import Optional, Union, Callable
+import firedrake as fd
+
+
+class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
+    """
+    Backward-Euler DG upwind stepper for the scalar hyperbolic PDE
+
+        u_t + div(beta * u) = 0
+
+    Weak form:
+        ((u^{n+1} - u^n)/dt, v)
+        - (u^{n+1}, div(v beta))
+        + exterior upwind fluxes
+        + interior upwind fluxes
+        = 0
+
+    Notes
+    -----
+    - For hyperbolic transport, boundary conditions are imposed weakly
+      through inflow/outflow flux terms, not with DirichletBC.
+    - DG is the natural discretization here.
+    """
+
+    def __init__(
+        self,
+        mesh: fd.MeshGeometry,
+        dt: float,
+        velocity: Optional[Union[fd.Function, tuple, list, Callable]] = None,
+        inflow_value: Union[float, fd.Constant, fd.Function] = 0.0,
+        degree: int = 1,
+        solver_parameters: Optional[dict] = None,
+        point_evaluator=None,
+    ):
+        self.degree = degree
+        self.point_evaluator = point_evaluator
+        self.inflow_value = inflow_value
+
+        # Build/store velocity field before calling parent constructor
+        self._velocity_input = velocity
+
+        default_solver_parameters = {
+            "snes_type": "ksponly",
+            "ksp_type": "preonly",
+            "pc_type": "bjacobi",
+            "sub_pc_type": "ilu",
+        }
+        if solver_parameters is not None:
+            default_solver_parameters.update(solver_parameters)
+
+        super().__init__(
+            mesh=mesh,
+            dt=dt,
+            solver_parameters=default_solver_parameters,
+            name="u",
+        )
+
+        # Build velocity field once, after V exists
+        self.W = fd.VectorFunctionSpace(mesh, "CG", max(1, degree))
+        self.beta = self.build_velocity_field()
+
+    def build_function_space(self, mesh):
+        cell_name = mesh.ufl_cell().cellname()
+        family = "DQ" if cell_name in ("quadrilateral", "hexahedron") else "DG"
+        return fd.FunctionSpace(mesh, family, self.degree)
+
+    def build_bcs(self):
+        # Hyperbolic inflow/outflow is handled weakly in the residual.
+        return []
+
+    def build_velocity_field(self):
+        """
+        Build beta as a Firedrake Function in a vector CG space.
+        """
+        beta = fd.Function(self.W, name="velocity")
+
+        if self._velocity_input is None:
+            x = fd.SpatialCoordinate(self.mesh)
+            if self.mesh.geometric_dimension() == 1:
+                expr = fd.as_vector((fd.Constant(1.0),))
+            elif self.mesh.geometric_dimension() == 2:
+                expr = fd.as_vector((fd.Constant(1.0), fd.Constant(0.0)))
+            else:
+                expr = fd.as_vector(
+                    tuple(fd.Constant(1.0 if i == 0 else 0.0)
+                          for i in range(self.mesh.geometric_dimension()))
+                )
+            beta.interpolate(expr)
+            return beta
+
+        if isinstance(self._velocity_input, fd.Function):
+            beta.assign(self._velocity_input)
+            return beta
+
+        if callable(self._velocity_input):
+            x = fd.SpatialCoordinate(self.mesh)
+            expr = self._velocity_input(x)
+            beta.interpolate(expr)
+            return beta
+
+        if isinstance(self._velocity_input, (tuple, list)):
+            expr = fd.as_vector(tuple(self._velocity_input))
+            beta.interpolate(expr)
+            return beta
+
+        # Assume UFL-compatible expression
+        beta.interpolate(self._velocity_input)
+        return beta
+
+    def residual(self, u_np1: fd.Function, u_n: fd.Function):
+        v = fd.TestFunction(self.V)
+        n = fd.FacetNormal(self.mesh)
+        beta = self.beta
+
+        # Positive outgoing normal flux, as in Firedrake's DG advection demo
+        un = 0.5 * (fd.dot(beta, n) + abs(fd.dot(beta, n)))
+
+        # Inflow boundary value
+        if isinstance(self.inflow_value, (int, float)):
+            u_in = fd.Constant(float(self.inflow_value))
+        else:
+            u_in = self.inflow_value
+
+        return (
+            ((u_np1 - u_n) / self.dt) * v * fd.dx
+            - u_np1 * fd.div(v * beta) * fd.dx
+            + fd.conditional(fd.dot(beta, n) < 0, v * fd.dot(beta, n) * u_in, 0.0) * fd.ds
+            + fd.conditional(fd.dot(beta, n) > 0, v * fd.dot(beta, n) * u_np1, 0.0) * fd.ds
+            + (v("+") - v("-"))
+              * (un("+") * u_np1("+") - un("-") * u_np1("-")) * fd.dS
+        )
 
 
 class ImplicitDiffusionStepper(FiredrakeTimeStepper):
@@ -245,7 +379,7 @@ class FiredrakePINNSBasedSOLTrainer:
     def train(self, epochs: int, batch_size: int = 8):
         losses = []
 
-        for _ in range(epochs):
+        for _ in tqdm(range(epochs)):
             batch_pred = []
             batch_in = []
 

@@ -10,7 +10,7 @@ import torch
 import firedrake as fd
 
 from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
-from trainer.Trainer import ImplicitDiffusionStepper, FiredrakePINNSBasedSOLTrainerCNN
+from trainer.Trainer import ImplicitLinearAdvectionStepper, FiredrakePINNSBasedSOLTrainerCNN
 from DL_models.PINNS.Residual_losses import diffusion_loss
 
 
@@ -96,10 +96,14 @@ def rollout_ground_truth(stepper, u0: fd.Function, n_steps: int):
 
 
 def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
-    ph_model = ImplicitDiffusionStepper(
-        mesh=mesh,
-        dt=dt,
-        point_evaluator=point_grid,
+
+    ph_model = ImplicitLinearAdvectionStepper(
+    mesh=mesh,
+    dt=0.01,
+    velocity=(1.0, 0.0),
+    inflow_value=0.0,
+    degree=1,
+    point_evaluator=point_grid,
     )
 
     trainer = FiredrakePINNSBasedSOLTrainerCNN(
