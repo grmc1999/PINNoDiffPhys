@@ -97,7 +97,6 @@ def rollout_ground_truth(stepper, u0: fd.Function, n_steps: int):
 
 def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
 
-    print(type(point_grid))
     ph_model = ImplicitLinearAdvectionStepper(
     mesh=mesh,
     dt=0.01,
@@ -106,7 +105,6 @@ def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
     degree=1,
     point_evaluator=point_grid,
     )
-    print(ph_model.point_evaluator)
 
     trainer = FiredrakePINNSBasedSOLTrainerCNN(
         physical_model=ph_model,
@@ -359,7 +357,6 @@ if __name__ == "__main__":
     mesh = eval(args.mesh_definition)
 
     train_grid = make_point_grid(args.train_grid_n)
-    print(train_grid)
 
     train_trainer = build_trainer(
         mesh=mesh,

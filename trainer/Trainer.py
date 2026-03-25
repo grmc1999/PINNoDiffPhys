@@ -144,8 +144,6 @@ class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
             point_evaluator = point_evaluator,
             solver_parameters=solver_parameters
             )
-        print("IN INSTANCE STEPPET")
-        print(type(self.point_evaluator))
 
         # Build/store velocity field before calling parent constructor
         self._velocity_input = velocity
@@ -158,13 +156,6 @@ class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
         }
         if solver_parameters is not None:
             default_solver_parameters.update(solver_parameters)
-
-        super().__init__(
-            mesh=mesh,
-            dt=dt,
-            solver_parameters=default_solver_parameters,
-            #name="u",
-        )
 
         # Build velocity field once, after V exists
         self.W = fd.VectorFunctionSpace(mesh, "CG", max(1, degree))
@@ -327,9 +318,7 @@ class FiredrakePINNSBasedSOLTrainer:
         feature_builder: Optional[Callable[[torch.Tensor, float], torch.Tensor]] = None,
     ):
         self.physical_model = physical_model
-        print(physical_model.point_evaluator)
         self.step_op = physical_model.build_torch_step_operator()
-        print(physical_model.point_evaluator)
 
         self.st_model = statistical_model
         self.optimizer = optimizer
