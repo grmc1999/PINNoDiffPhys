@@ -40,7 +40,7 @@ class FiredrakeTimeStepper(ABC):
         self.bcs = self.build_bcs()
         self.point_evaluator = point_evaluator
 
-        self.ori_points = fd.Function(self.V).interpolate(fd.SpatialCoordinate(self.mesh))
+        self.ori_points = fd.Function(fd.VectorFunctionSpace(self.V.mesh(), "DG", 0)).interpolate(fd.SpatialCoordinate(self.mesh))
 
         if isinstance(self.point_evaluator, np.ndarray):
             self.evaluation_shape = self.point_evaluator.shape
