@@ -97,7 +97,7 @@ def rollout_ground_truth(stepper, u0: fd.Function, n_steps: int):
 
 def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
 
-    print(point_grid)
+    print(type(point_grid))
     ph_model = ImplicitLinearAdvectionStepper(
     mesh=mesh,
     dt=0.01,
