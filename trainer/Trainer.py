@@ -145,7 +145,7 @@ class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
             solver_parameters=solver_parameters
             )
         print("IN INSTANCE STEPPET")
-        print(self.point_evaluator)
+        print(type(self.point_evaluator))
 
         # Build/store velocity field before calling parent constructor
         self._velocity_input = velocity
