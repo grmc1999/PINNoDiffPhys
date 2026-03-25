@@ -40,6 +40,8 @@ class FiredrakeTimeStepper(ABC):
         self.bcs = self.build_bcs()
         self.point_evaluator = point_evaluator
 
+        self.ori_points = fd.Function(self.V).interpolate(fd.SpatialCoordinate(self.mesh))
+
         if isinstance(self.point_evaluator, np.ndarray):
             self.evaluation_shape = self.point_evaluator.shape
             vom = fd.VertexOnlyMesh(
@@ -48,6 +50,12 @@ class FiredrakeTimeStepper(ABC):
                                     reorder = False
                                     )
             self.P0DG = fd.FunctionSpace(vom, "DG", 0)
+
+            vom = fd.VertexOnlyMesh(
+                                    mesh,
+                                    self.ori_points,
+                                    )
+            self.P0DG_ori = fd.FunctionSpace(vom, "DG", 0)
 
     @abstractmethod
     def build_function_space(self, mesh: fd.MeshGeometry):
@@ -89,7 +97,7 @@ class FiredrakeTimeStepper(ABC):
         u_np1 = fd.Function(self.V, name="u_np1_state")
 
         if isinstance(self.point_evaluator, np.ndarray):
-            u_np1 = fd.assemble(fd.interpolate(u_n, self.V))
+            u_np1 = fd.assemble(fd.interpolate(u_n, self.P0DG_ori))
         F = self.residual(u_np1, u_n)
         fd.solve(
             F == 0,
