@@ -132,20 +132,18 @@ class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
         inflow_value: Union[float, fd.Constant, fd.Function] = 0.0,
         degree: int = 1,
         solver_parameters: Optional[dict] = None,
-        point_evaluator=None,
+        point_evaluator: np.ndarray = None,
     ):
         self.degree = degree
-        self.point_evaluator = point_evaluator
+        
         self.inflow_value = inflow_value
 
-        if isinstance(self.point_evaluator, np.ndarray):
-            self.evaluation_shape = self.point_evaluator.shape
-            vom = fd.VertexOnlyMesh(
-                                    mesh,
-                                    self.point_evaluator.reshape(-1,mesh.geometric_dimension()),
-                                    reorder = False
-                                    )
-            self.P0DG = fd.FunctionSpace(vom, "DG", 0)
+        super().__init__(
+            mesh=mesh,
+            dt=dt,
+            point_evaluator = point_evaluator,
+            solver_parameters=solver_parameters
+            )
 
         # Build/store velocity field before calling parent constructor
         self._velocity_input = velocity
@@ -190,7 +188,7 @@ class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
             if self.mesh.geometric_dimension() == 1:
                 expr = fd.as_vector((fd.Constant(1.0),))
             elif self.mesh.geometric_dimension() == 2:
-                expr = fd.as_vector((fd.Constant(1.0), fd.Constant(0.0)))
+                expr = fd.as_vector((fd.Constant(1.0), fd.Constant(0.0))) ######################### DEFINITION
             else:
                 expr = fd.as_vector(
                     tuple(fd.Constant(1.0 if i == 0 else 0.0)
