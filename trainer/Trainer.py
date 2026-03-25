@@ -325,7 +325,9 @@ class FiredrakePINNSBasedSOLTrainer:
         feature_builder: Optional[Callable[[torch.Tensor, float], torch.Tensor]] = None,
     ):
         self.physical_model = physical_model
+        print(physical_model.point_evaluator)
         self.step_op = physical_model.build_torch_step_operator()
+        print(physical_model.point_evaluator)
 
         self.st_model = statistical_model
         self.optimizer = optimizer
