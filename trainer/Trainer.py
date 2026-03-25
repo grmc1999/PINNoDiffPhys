@@ -154,7 +154,7 @@ class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
             mesh=mesh,
             dt=dt,
             solver_parameters=default_solver_parameters,
-            name="u",
+            #name="u",
         )
 
         # Build velocity field once, after V exists
@@ -253,7 +253,12 @@ class ImplicitDiffusionStepper(FiredrakeTimeStepper):
         self.degree = degree
         self.k = fd.Constant(diffusivity)
         self.f = fd.Constant(forcing)
-        super().__init__(mesh=mesh, dt=dt,point_evaluator = point_evaluator, solver_parameters=solver_parameters)
+        super().__init__(
+            mesh=mesh,
+            dt=dt,
+            point_evaluator = point_evaluator,
+            solver_parameters=solver_parameters
+            )
 
     def build_function_space(self, mesh):
         return fd.FunctionSpace(mesh, "CG", self.degree)
