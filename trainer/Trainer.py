@@ -53,7 +53,7 @@ class FiredrakeTimeStepper(ABC):
 
             vom = fd.VertexOnlyMesh(
                                     mesh,
-                                    self.ori_points,
+                                    self.ori_point.dat.data,
                                     )
             self.P0DG_ori = fd.FunctionSpace(vom, "DG", 0)
 
