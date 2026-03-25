@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Optional, Union, Callable
+import firedrake as fd
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
@@ -99,11 +102,6 @@ class FiredrakeTimeStepper(ABC):
         red = ReducedFunctional(u_np1, Control(u_n))
         fd.adjoint.stop_annotating()
         return fem_operator(red)
-
-from __future__ import annotations
-
-from typing import Optional, Union, Callable
-import firedrake as fd
 
 
 class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
