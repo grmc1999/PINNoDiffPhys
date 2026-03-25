@@ -97,8 +97,8 @@ class FiredrakeTimeStepper(ABC):
         u_np1 = fd.Function(self.V, name="u_np1_state")
 
         if isinstance(self.point_evaluator, np.ndarray):
-            u_np1 = fd.assemble(fd.interpolate(u_n, self.P0DG_ori))
-            u_np1 = fd.project(u_np1,self.V)
+            u_np1 = fd.assemble(fd.interpolate(u_n, self.V))
+            #u_np1 = fd.project(u_np1,self.V)
         F = self.residual(u_np1, u_n)
         fd.solve(
             F == 0,
