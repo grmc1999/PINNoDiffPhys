@@ -327,6 +327,8 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
+    # Train_test_diffusion 
+
     parser.add_argument("--mesh_definition", type=str, default="fd.UnitSquareMesh(10,10)")
     parser.add_argument("--dt", type=float, default=0.1)
     parser.add_argument("--num_rollout", type=int, default=10)

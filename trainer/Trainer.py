@@ -107,7 +107,7 @@ class FiredrakeTimeStepper_(ABC):
             self.evaluation_shape = self.point_evaluator.shape
             vom = fd.VertexOnlyMesh(
                                     mesh,
-                                    self.point_evaluator.reshape(-1,mesh.geometric_dimension()),
+                                    self.point_evaluator.reshape(-1,mesh.geometric_dimension),
                                     reorder = False
                                     )
             self.P0DG = fd.FunctionSpace(vom, "DG", 0)
@@ -207,7 +207,7 @@ class FiredrakeTimeStepper(ABC):
             self.evaluation_shape = self.point_evaluator.shape
             vom = fd.VertexOnlyMesh(
                                     mesh,
-                                    self.point_evaluator.reshape(-1,mesh.geometric_dimension()),
+                                    self.point_evaluator.reshape(-1,mesh.geometric_dimension),
                                     reorder = False
                                     )
             self.P0DG = fd.FunctionSpace(vom, "DG", 0)
@@ -389,14 +389,14 @@ class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
 
         if self._velocity_input is None:
             x = fd.SpatialCoordinate(self.mesh)
-            if self.mesh.geometric_dimension() == 1:
+            if self.mesh.geometric_dimension == 1:
                 expr = fd.as_vector((fd.Constant(1.0),))
-            elif self.mesh.geometric_dimension() == 2:
+            elif self.mesh.geometric_dimension == 2:
                 expr = fd.as_vector((fd.Constant(1.0), fd.Constant(0.0))) ######################### DEFINITION
             else:
                 expr = fd.as_vector(
                     tuple(fd.Constant(1.0 if i == 0 else 0.0)
-                          for i in range(self.mesh.geometric_dimension()))
+                          for i in range(self.mesh.geometric_dimension))
                 )
             beta.interpolate(expr)
             return beta
@@ -670,7 +670,7 @@ class FiredrakePINNSBasedSOLTrainer:
         if isinstance(spatial_sample,np.ndarray):
             vom = fd.VertexOnlyMesh(
                                 self.physical_model.V.mesh(),
-                                spatial_sample.reshape(-1,self.physical_model.V.mesh().geometric_dimension()),
+                                spatial_sample.reshape(-1,self.physical_model.V.mesh().geometric_dimension),
                                 reorder = False
                                 )
             P0DG_ = fd.FunctionSpace(vom, "DG", 0)
@@ -687,7 +687,7 @@ class FiredrakePINNSBasedSOLTrainer:
                                rearrange(self.st_model(rearrange(u_sol,"(x y) V -> V x y",
                                                                x = spatial_sample.shape[0],
                                                                y = spatial_sample.shape[1],
-                                                               V = (self.physical_model.V.mesh().geometric_dimension() + 1 + 1) # TODO: extend to multiple output space
+                                                               V = (self.physical_model.V.mesh().geometric_dimension + 1 + 1) # TODO: extend to multiple output space
                                                                ))," V x y -> (x y) V") for u_sol in uncorrected_sol)
             
             states_pred = torch.stack(states_pred,axis = 0) # [t p V]
