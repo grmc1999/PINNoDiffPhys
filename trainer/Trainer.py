@@ -15,7 +15,68 @@ import firedrake as fd
 from firedrake.adjoint import Control, ReducedFunctional
 from firedrake.ml.pytorch.fem_operator import fem_operator, to_torch
 from tqdm import tqdm
-class FiredrakeTimeStepper(ABC):
+
+class TorchPointCloudLift(torch.nn.Module):
+    """
+    Differentiable torch lift from point-grid values to Firedrake state DOFs.
+
+    Given a fixed Firedrake point-evaluation matrix
+
+        E : V_dofs -> point_values,
+
+    this module applies the Tikhonov-regularized pseudo-inverse
+
+        L = (E^T E + reg I)^(-1) E^T,
+
+    so that a CNN correction living on the VertexOnlyMesh / CNN grid can be
+    lifted back to the original finite-element space V before the next PDE step.
+
+    The matrix is fixed, but the operation q -> L q is differentiable with
+    respect to q, so gradients from the recurrent PDE rollout still reach the
+    CNN parameters.
+    """
+
+    def __init__(self, point_eval_matrix: torch.Tensor, reg: float = 1.0e-6):
+        super().__init__()
+        if point_eval_matrix.ndim != 2:
+            raise ValueError("point_eval_matrix must have shape [n_points, n_dofs].")
+
+        E = point_eval_matrix.detach()
+        n_points, n_dofs = E.shape
+        eye = torch.eye(n_dofs, dtype=E.dtype, device=E.device)
+        lift = torch.linalg.solve(E.T @ E + float(reg) * eye, E.T)  # [n_dofs, n_points]
+
+        self.n_points = n_points
+        self.n_dofs = n_dofs
+        self.register_buffer("lift", lift)
+
+    def forward(self, q_points: torch.Tensor) -> torch.Tensor:
+        """
+        Parameters
+        ----------
+        q_points:
+            Shape [P], [B, P], or [B, P, 1].
+
+        Returns
+        -------
+        q_dofs:
+            Shape [B, n_dofs].
+        """
+        if q_points.ndim == 1:
+            q_points = q_points.unsqueeze(0)
+        if q_points.ndim == 3:
+            if q_points.shape[-1] != 1:
+                raise ValueError("Only scalar point fields with shape [B, P, 1] are supported.")
+            q_points = q_points[..., 0]
+        if q_points.ndim != 2:
+            raise ValueError("q_points must have shape [P], [B, P], or [B, P, 1].")
+        if q_points.shape[-1] != self.n_points:
+            raise ValueError(
+                f"Expected {self.n_points} point values, got {q_points.shape[-1]}."
+            )
+        return q_points @ self.lift.T
+
+class FiredrakeTimeStepper_(ABC):
     """
     Abstract differentiable Firedrake time-stepper.
 
@@ -114,6 +175,144 @@ class FiredrakeTimeStepper(ABC):
         red = ReducedFunctional(u_np1, Control(u_n))
         fd.adjoint.stop_annotating()
         return fem_operator(red)
+    
+class FiredrakeTimeStepper(ABC):
+    """
+    Abstract differentiable Firedrake time-stepper.
+
+    A subclass must define:
+      - function space
+      - boundary conditions
+      - variational residual for one time step
+    """
+
+    def __init__(
+        self,
+        mesh: fd.MeshGeometry,
+        dt: float,
+        solver_parameters: Optional[dict] = None,
+        point_evaluator: np.ndarray = None,
+    ):
+        self.mesh = mesh
+        self.dt = fd.Constant(dt)
+        self.solver_parameters = solver_parameters or {}
+
+        self.V = self.build_function_space(mesh)
+        self.bcs = self.build_bcs()
+        self.point_evaluator = point_evaluator
+
+        self.ori_points = fd.Function(fd.VectorFunctionSpace(self.V.mesh(), "DG", 0)).interpolate(fd.SpatialCoordinate(self.mesh))
+
+        if isinstance(self.point_evaluator, np.ndarray):
+            self.evaluation_shape = self.point_evaluator.shape
+            vom = fd.VertexOnlyMesh(
+                                    mesh,
+                                    self.point_evaluator.reshape(-1,mesh.geometric_dimension()),
+                                    reorder = False
+                                    )
+            self.P0DG = fd.FunctionSpace(vom, "DG", 0)
+
+            vom = fd.VertexOnlyMesh(
+                                    mesh,
+                                    self.ori_points.dat.data,
+                                    )
+            self.P0DG_ori = fd.FunctionSpace(vom, "DG", 0)
+
+    @abstractmethod
+    def build_function_space(self, mesh: fd.MeshGeometry):
+        ...
+
+    @abstractmethod
+    def build_bcs(self):
+        ...
+
+    @abstractmethod
+    def residual(self, u_np1: fd.Function, u_n: fd.Function):
+        """
+        Return the weak residual F(u_{n+1}; v, u_n) = 0 for one implicit step.
+        """
+        ...
+
+    def step(self, u_n: fd.Function) -> fd.Function:
+        """
+        Pure Firedrake step: u_n -> u_{n+1}
+        """
+        u_np1 = fd.Function(self.V, name="u_np1")
+        F = self.residual(u_np1, u_n)
+        fd.solve(
+            F == 0,
+            u_np1,
+            bcs=self.bcs,
+            solver_parameters=self.solver_parameters,
+        )
+        return u_np1
+    
+    def build_torch_state_step_operator(self) -> Callable[[torch.Tensor], torch.Tensor]:
+        """
+        """
+        fd.adjoint.continue_annotation()
+
+        u_n = fd.Function(self.V, name="u_n_control_state")
+        u_np1 = fd.Function(self.V, name="u_np1_state")
+
+        F = self.residual(u_np1, u_n)
+        fd.solve(
+            F == 0,
+            u_np1,
+            bcs=self.bcs,
+            solver_parameters=self.solver_parameters,
+        )
+
+        red = ReducedFunctional(u_np1, Control(u_n))
+        fd.adjoint.stop_annotating()
+        return fem_operator(red)
+
+    def build_torch_point_observation_operator(self) -> Callable[[torch.Tensor], torch.Tensor]:
+        """
+        """
+        if not hasattr(self, "P0DG"):
+            raise ValueError("model must be constructed with point_evaluator to build point observations.")
+
+        fd.adjoint.continue_annotation()
+
+        u = fd.Function(self.V, name="u_state_for_point_observation")
+        u_points = fd.assemble(fd.interpolate(u, self.P0DG))
+
+        red = ReducedFunctional(u_points, Control(u))
+        fd.adjoint.stop_annotating()
+        return fem_operator(red)
+    
+    def build_dense_point_eval_matrix(self,
+        dtype: torch.dtype = torch.float32,
+        device: torch.device | str = "cpu",
+        chunk_size: int = 64,
+    ) -> torch.Tensor:
+        """
+        Construct the dense matrix E corresponding to the differentiable observation
+        operator V -> point grid, without using NumPy conversion in the training loop.
+
+        E has shape [n_points, n_dofs]. It is obtained by applying the observation
+        operator to canonical basis vectors of V.
+        """
+        rows_by_basis_batch = []
+        device = torch.device(device)
+
+        n_dofs = self.V.dim()
+
+        with torch.no_grad():
+            for start in range(0, n_dofs, chunk_size):
+                end = min(start + chunk_size, n_dofs)
+                x = torch.zeros((end - start, n_dofs), dtype=dtype, device=device)
+                x[torch.arange(end - start, device=device), torch.arange(start, end, device=device)] = 1.0
+
+                y = self.observation_op(x)
+                if y.ndim == 1:
+                    y = y.unsqueeze(0)
+                y = y.reshape(y.shape[0], -1)
+                rows_by_basis_batch.append(y.detach().cpu())
+
+        # Currently: [n_dofs, n_points]. We need [n_points, n_dofs].
+        return torch.cat(rows_by_basis_batch, dim=0).T.contiguous()
 
 
 class ImplicitLinearAdvectionStepper(FiredrakeTimeStepper):
@@ -327,20 +526,31 @@ class FiredrakePINNSBasedSOLTrainer:
         simulation_steps: int,
         dt: float,
         loss: Callable,
-        feature_builder: Optional[Callable[[torch.Tensor, float], torch.Tensor]] = None,
+        lift_regularization: float = 1.0e-6,
+        lift_chunk_size: int = 64
     ):
         self.physical_model = physical_model
-        self.step_op = physical_model.build_torch_step_operator()
-
         self.st_model = statistical_model
         self.optimizer = optimizer
         self.n_steps = simulation_steps
         self.dt = dt
         self.loss = loss
-        self.feature_builder = feature_builder or append_time_channel
+        #self.feature_builder = feature_builder or append_time_channel
+        self.step_op = physical_model.build_torch_step_operator()
+        self.observe_op = physical_model.build_torch_point_observation_operator()
+        n_dofs = physical_model.V.dim()
+        E = physical_model.build_dense_point_eval_matrix(
+            dtype=torch.float32,
+            device="cpu",
+            chunk_size=lift_chunk_size,
+        )
+        self.grid_to_state_lift = TorchPointCloudLift(E, reg=lift_regularization)
 
         self.init_states_gt: List[fd.Function] = []
         self.T: List[float] = [0.0]
+
+        self._last_phys_v: List[torch.Tensor] = []
+        self._last_corrected_v: List[torch.Tensor] = []
 
     def generate_ground_truth(self, u0: fd.Function, n_rollout: int):
         self.init_states_gt = [fd.Function(u0, name="gt_0")]
@@ -352,9 +562,9 @@ class FiredrakePINNSBasedSOLTrainer:
             self.init_states_gt.append(fd.Function(u))
             self.T.append(self.T[-1] + self.dt)
 
-    def correct(self, state_tensor: torch.Tensor, t: float) -> Tuple[torch.Tensor, torch.Tensor]:
+    def correct(self, features: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # TODO: Model-corrector should implement the coordinate message passing
-        features = rearrange(self.feature_builder(state_tensor, t),"c h w-> 1 (h w) c").requires_grad_(True)
+        #features = rearrange(self.feature_builder(state_tensor, t),"c h w-> 1 (h w) c").requires_grad_(True)
         correction = rearrange(self.st_model(
             rearrange(features,"1 (h w) c -> c h w", h = self.physical_model.evaluation_shape[0] ,w = self.physical_model.evaluation_shape[1])
             ), " c h w -> 1 (h w) c") # [u x t] 
@@ -369,25 +579,41 @@ class FiredrakePINNSBasedSOLTrainer:
         states_pred = []
         states_corr = []
         states_in = []
+        states_phys_v = []
+        states_corrected_v = []
 
         current_t = t0
-        current = state0_tensor
+        current_v = state0_tensor
+        current_v = current_v.float()
         
 
         for _ in range(self.n_steps):
             # Firedrake differentiable step
-            phys_next = self.step_op(current) # [B p]
+            phys_next_v = self.step_op(current_v) # [B p]
 
             current_t = current_t + self.dt
-            # TODO: Coordinate encoder should be outside of the corrector (model)
-            corrected, corr, features = self.correct(phys_next, current_t) # [b p v], ?, [b p v]
+            phys_next_grid = self.observe_op(phys_next_v)
+            features = rearrange(
+                self.feature_builder(phys_next_grid, current_t),
+                "c h w-> 1 (h w) c"
+                ).requires_grad_(True)
+            corrected_grid, corr_grid, features = self.correct(features) # [b p v], ?, [b p v]
             # corrected to embeded feature
 
-            states_in.append(features) # states_in.append(XTUp_1)
-            states_corr.append(corr)
-            states_pred.append(corrected)
+            corr_v = self.grid_to_state_lift(corr_grid).to(
+                dtype=phys_next_v.dtype,
+                device=phys_next_v.device,
+            )
+            corrected_v = phys_next_v + corr_v
 
-            current = corrected[:,:,0] # [B p v] # "squeeze"
+            states_in.append(features) # states_in.append(XTUp_1)
+            states_corr.append(corr_grid)
+            states_pred.append(corrected_grid)
+            states_phys_v.append(phys_next_v)
+            states_corrected_v.append(corrected_v)
+
+            #current = corrected[:,:,0] # [B p v] # "squeeze"
+            current_v = corrected_v
 
         return states_pred, states_corr, states_in
 
@@ -505,3 +731,62 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
     X = X.reshape(eval_points.shape) # [p_dims x y]
     t = torch.tile(torch.tensor(t),(eval_points.shape[:2])+(1,))
     return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
+  
+
+class FiredrakePINNSBasedSOLTrainerConsistentCNN(FiredrakePINNSBasedSOLTrainer):
+    def __init__(self,**args):
+        super().__init__(**args)
+        del self.feature_builder
+
+    def feature_builder(self, u_points: torch.Tensor, t: float) -> torch.Tensor:
+        """
+        Build CNN features [x, y, t, u] with shape [C, H, W].
+
+        u_points must be the scalar field evaluated on physical_model.P0DG, not
+        the original Firedrake DOF tensor.
+        """
+        eval_shape = self.physical_model.evaluation_shape
+        spatial_shape = eval_shape[:-1]
+
+        if u_points.ndim == 2:
+            # [B, P]; current implementation uses B=1 during rollout.
+            u_points = u_points[0]
+        u = u_points.reshape(spatial_shape + (1,))
+
+        Vx = fd.VectorFunctionSpace(self.physical_model.P0DG.mesh(), "DG", 0)
+        X = to_torch(fd.Function(Vx).interpolate(fd.SpatialCoordinate(self.physical_model.mesh)))
+        X = X.reshape(eval_shape)
+
+        t_channel = torch.full(
+            spatial_shape + (1,),
+            fill_value=float(t),
+            dtype=u.dtype,
+            device=u.device,
+        )
+        X = X.to(dtype=u.dtype, device=u.device)
+        #features = self.feature_builder_finer(u_points, t, )
+        return torch.concat((X, t_channel, u), axis=-1).transpose(0, -1).float()
+
+    def feature_builder_finer(
+        self,
+        u_points: torch.Tensor,
+        t: float,
+        eval_points: np.ndarray,
+        fs: fd.FunctionSpace,
+    ) -> torch.Tensor:
+        if u_points.ndim == 2:
+            u_points = u_points[0]
+        u = u_points.reshape(eval_points.shape[:-1] + (1,))
+
+        Vx = fd.VectorFunctionSpace(fs.mesh(), "DG", 0)
+        X = to_torch(fd.Function(Vx).interpolate(fd.SpatialCoordinate(fs.mesh())))
+        X = X.reshape(eval_points.shape)
+
+        t_channel = torch.full(
+            eval_points.shape[:-1] + (1,),
+            fill_value=float(t),
+            dtype=u.dtype,
+            device=u.device,
+        )
+        X = X.to(dtype=u.dtype, device=u.device)
+        return torch.concat((X, t_channel, u), axis=-1).transpose(0, -1).float()
