@@ -8,6 +8,16 @@ def diffusion_loss(u,xt,K, dim = 2):
     """
     return x_grad(u,xt,0,1)[...,-1] - K * torch.sum(x_grad(u,xt,0,1)[...,:dim], axis = -1) # spatial gradient grad u
 
+def poisson_residual_loss(u, xt, K=1.0, dim=2):
+    """
+    r = -K * Laplacian(u)
+    Second-order autograd derivatives of u wrt spatial coords in xt.
+    """
+    du = x_grad(u, xt, 0, 1)
+    d2u = x_grad(du, xt, 0, 1)
+    lap = torch.sum(d2u[..., :dim], axis=-1)
+    return -K * lap
+
 def incompresibble_fluid_loss(up,xt,mu=1,rho=1):
     l=0
     # x-velocity components

@@ -488,6 +488,105 @@ class ImplicitDiffusionStepper(FiredrakeTimeStepper):
         )
 
 
+class IterativePoissonSolverStepper(FiredrakeTimeStepper):
+    """
+    Elliptic Poisson problem treated as a sequence of iterative-solver steps:
+
+        -div(k grad u) = f  on unit square, u|_bdy = g
+
+    One differentiable "step" applies *m* mass-matrix-preconditioned Richardson
+    iterations (Jacobi-style warm start) starting from the previous iterate.
+
+    Trained against high-tolerance references; generalized across iteration
+    budgets (smaller *m* at test time = "coarser" solver = imperfect representation).
+    """
+
+    def __init__(
+        self,
+        mesh: fd.MeshGeometry,
+        m_iters: int = 5,
+        relaxation: float = 1.0,
+        point_evaluator: np.ndarray = None,
+        diffusivity: float = 1.0,
+        forcing: float = 0.0,
+        bc_value: float = 0.0,
+        degree: int = 1,
+        solver_parameters: Optional[dict] = None,
+    ):
+        self.degree = degree
+        self.m_iters = m_iters
+        self.relaxation = relaxation
+        self.k = fd.Constant(diffusivity)
+        self.f = fd.Constant(forcing)
+        self.bc_value = bc_value
+        super().__init__(
+            mesh=mesh,
+            dt=1.0,
+            point_evaluator=point_evaluator,
+            solver_parameters=solver_parameters,
+        )
+
+    def build_function_space(self, mesh):
+        return fd.FunctionSpace(mesh, "CG", self.degree)
+
+    def build_bcs(self):
+        return [fd.DirichletBC(self.V, fd.Constant(self.bc_value), "on_boundary")]
+
+    def residual(self, u_np1: fd.Function, u_n: fd.Function):
+        """Exact variational residual (= solved by inherited .step())."""
+        v = fd.TestFunction(self.V)
+        return (
+            fd.inner(self.k * fd.grad(u_np1), fd.grad(v)) * fd.dx
+            - self.f * v * fd.dx
+        )
+
+    def _a_bilinear(self, u, v):
+        return fd.inner(self.k * fd.grad(u), fd.grad(v)) * fd.dx
+
+    def _L_linear(self, v):
+        return self.f * v * fd.dx
+
+    def iterative_step(self, u_n: fd.Function) -> fd.Function:
+        """Apply *m_iters* mass-preconditioned Richardson correction iterations.
+
+        Each iteration: r = b - A u;  M du = r;  u <- u + omega du.
+        This is a differentiable operation through firedrake adjoint (each
+        linear solve is taped as a KSP solve node in the annotation tape).
+        """
+        v = fd.TestFunction(self.V)
+        u = fd.Function(self.V, name="poisson_iterate")
+        u.assign(u_n)
+
+        M_mat = fd.assemble(fd.inner(fd.TrialFunction(self.V), v) * fd.dx)
+        du = fd.Function(self.V)
+
+        inner_sp = {
+            "ksp_type": "preonly",
+            "pc_type": "jacobi",
+        }
+
+        for _ in range(self.m_iters):
+            r = fd.assemble(
+                self._L_linear(v) - fd.action(self._a_bilinear(u, v), v)
+            )
+            fd.solve(M_mat, du, r, solver_parameters=inner_sp)
+            u.dat.data[:] += self.relaxation * du.dat.data[:]
+            for bc in self.bcs:
+                bc.apply(u)
+
+        return u
+
+    def build_torch_step_operator(self):
+        fd.adjoint.continue_annotation()
+        u_n = fd.Function(self.V, name="u_n_control_poisson")
+        u_out = self.iterative_step(u_n)
+        if isinstance(self.point_evaluator, np.ndarray):
+            u_out = fd.assemble(fd.interpolate(u_out, self.P0DG))
+        red = ReducedFunctional(u_out, Control(u_n))
+        fd.adjoint.stop_annotating()
+        return fem_operator(red)
+
+
 def firedrake_field_to_torch(u: fd.Function, batched: bool = True) -> torch.Tensor:
     """
     Convert Firedrake Function to torch tensor using Firedrake's helper.

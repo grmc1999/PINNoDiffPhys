@@ -12,6 +12,7 @@ import firedrake as fd
 from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
 from trainer.Trainer import ImplicitLinearAdvectionStepper, FiredrakePINNSBasedSOLTrainerCNN
 from DL_models.PINNS.Residual_losses import diffusion_loss
+from experiment_utils import (set_seed, make_exp_dir, save_checkpoint, rollout_ground_truth_on_grid, gt_error_metrics)
 
 
 
@@ -54,7 +55,7 @@ def tensor_state_to_grid(state_tensor, grid_shape):
       [1, H*W, 1]
       [H*W, 1]
     """
-    state_tensor.reshape(grid_shape)
+    return state_tensor.reshape(grid_shape)
 
 def compute_residual_curve(trainer, pred_states, input_states):
     """
@@ -99,7 +100,7 @@ def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
 
     ph_model = ImplicitLinearAdvectionStepper(
     mesh=mesh,
-    dt=0.01,
+    dt=dt,
     velocity=(1.0, 0.0),
     inflow_value=0.0,
     degree=1,
@@ -250,11 +251,15 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     )
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], fine_grid.shape[:2])
 
-    report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
+    report = compute_residual_curve(test_trainer, pred_states[:,:,-1:], uncorrected_sol)
 
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
     report["grid_shape"] = fine_grid.shape
+
+    gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model, u0, n_steps, fine_grid)
+    report["gt_error"] = gt_error_metrics(pred_states[:,:,-1:], gt_grids)
+
     return report
 
 
@@ -281,12 +286,16 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     )
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], grid.shape[:2])
 
-    report = compute_residual_curve(test_trainer, pred_states, uncorrected_sol)
+    report = compute_residual_curve(test_trainer, pred_states[:,:,-1:], uncorrected_sol)
 
     report["times"] = np.asarray(pred_times)
     report["dt_test"] = dt_test
     report["pred_grids"] = pred_grids
     report["grid_shape"] = grid.shape
+
+    gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model, u0, n_steps, grid)
+    report["gt_error"] = gt_error_metrics(pred_states[:,:,-1:], gt_grids)
+
     return report
 
 
@@ -321,6 +330,9 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     report["train_horizon"] = train_horizon
     report["test_horizon"] = test_horizon
 
+    gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model, u0, n_steps, grid)
+    report["gt_error"] = gt_error_metrics(pred_states[:,:,-1:], gt_grids)
+
     return report
 
 
@@ -346,9 +358,31 @@ if __name__ == "__main__":
     parser.add_argument("--extrapolation_factor", type=float, default=2.0)
 
     parser.add_argument("--output_dir", type=str, default="results_diffusion_experiments")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--exp_name", type=str, default=None)
+    parser.add_argument("--base_output_dir", type=str, default="EXPS")
+    parser.add_argument("--save_every", type=int, default=10)
 
     args = parser.parse_args()
-    os.makedirs(args.output_dir, exist_ok=True)
+    set_seed(args.seed)
+
+    params = {
+        "dt": args.dt,
+        "num_rollout": args.num_rollout,
+        "n_epochs": args.n_epochs,
+        "batch_size": args.batch_size,
+        "train_grid_n": args.train_grid_n,
+        "seed": args.seed,
+    }
+
+    if args.exp_name is not None:
+        exp_dir = os.path.join(args.base_output_dir, args.exp_name)
+    else:
+        exp_dir = make_exp_dir(args.base_output_dir, "advection", params)
+
+    os.makedirs(exp_dir, exist_ok=True)
+    plot_dir = os.path.join(exp_dir, "plots")
+    os.makedirs(plot_dir, exist_ok=True)
 
     # --------------------------------------------------------
     # Training
@@ -370,15 +404,26 @@ if __name__ == "__main__":
     u0 = make_ic(train_trainer.physical_model.V)
 
     train_trainer.generate_ground_truth(u0, args.num_rollout)
-    losses = train_trainer.train(epochs=args.n_epochs, batch_size=args.batch_size)
+
+    losses = []
+    for start in range(0, args.n_epochs, args.save_every):
+        n = min(args.save_every, args.n_epochs - start)
+        chunk_losses = train_trainer.train(epochs=n, batch_size=args.batch_size)
+        losses.extend(chunk_losses)
+        save_checkpoint(st_model, train_trainer.optimizer, start + n, losses,
+                        os.path.join(exp_dir, "checkpoint.pt"))
+        print(f"  [checkpoint] epoch {start+n}/{args.n_epochs}  loss={chunk_losses[-1]:.6f}")
 
     if losses is None:
         losses = []
 
+    np.save(os.path.join(exp_dir, "train_losses.npy"), np.asarray(losses))
+    torch.save(st_model.state_dict(), os.path.join(exp_dir, "trained_model.pt"))
+
     if len(losses) > 0:
         plot_training_curve(
             losses,
-            os.path.join(args.output_dir, "training_curve.png"),
+            os.path.join(plot_dir, "training_curve.png"),
         )
 
     # --------------------------------------------------------
@@ -392,7 +437,7 @@ if __name__ == "__main__":
     )
 
     plot_residual(spatial_report,
-                os.path.join(args.output_dir, "spatial_interpolation.png"),
+                os.path.join(plot_dir, "spatial_interpolation.png"),
                 title = "spatial interpolation"
                 )
 
@@ -407,7 +452,7 @@ if __name__ == "__main__":
     )
 
     plot_residual(temporal_interp_report,
-                os.path.join(args.output_dir, "temporal_interpolation.png"),
+                os.path.join(plot_dir, "temporal_interpolation.png"),
                 title = "temporal interpolation"
                 )
 
@@ -422,7 +467,7 @@ if __name__ == "__main__":
     )
 
     plot_residual(temporal_extra_report,
-                os.path.join(args.output_dir, "temporal_extrapolation.png"),
+                os.path.join(plot_dir, "temporal_extrapolation.png"),
                 title = "temporal extarpolation",
                 test_limit=float(temporal_extra_report["train_horizon"])
                 )
@@ -445,10 +490,30 @@ if __name__ == "__main__":
 
     plot_residual_curves(
         posterior_residual_curves,
-        os.path.join(args.output_dir, "posterior_test_residual_curves.png"),
+        os.path.join(plot_dir, "posterior_test_residual_curves.png"),
         train_horizon=args.num_rollout * args.dt,
     )
 
+    posterior_error_curves = {
+    "spatial interpolation": {
+        "times": spatial_report["times"],
+        "rel_rmse": spatial_report["gt_error"]["rel_rmse_per_step"],
+    },
+    "temporal interpolation": {
+        "times": temporal_interp_report["times"],
+        "rel_rmse": temporal_interp_report["gt_error"]["rel_rmse_per_step"],
+    },
+    "temporal extrapolation": {
+        "times": temporal_extra_report["times"],
+        "rel_rmse": temporal_extra_report["gt_error"]["rel_rmse_per_step"],
+    },
+}
+
+    plot_error_curves(
+        posterior_error_curves,
+        os.path.join(plot_dir, "posterior_test_error_curves.png"),
+        train_horizon=args.num_rollout * args.dt,
+    )
 
     # --------------------------------------------------------
     # Save quantitative summaries
@@ -464,41 +529,35 @@ if __name__ == "__main__":
     },
     "spatial_interpolation": {
         "grid_test_n": args.spatial_test_n,
-        #"rmse_mean": spatial_report["rmse_mean"],
-        #"rmse_last": spatial_report["rmse_last"],
-        #"rel_rmse_mean": spatial_report["rel_rmse_mean"],
-        #"rel_rmse_last": spatial_report["rel_rmse_last"],
-        #"linf_max": spatial_report["linf_max"],
         "residual_mean": spatial_report["residual_mean"],
         "residual_last": spatial_report["residual_last"],
         "residual_max": spatial_report["residual_max"],
+        "gt_rel_rmse_mean": spatial_report["gt_error"]["rel_rmse_mean"],
+        "gt_rel_rmse_last": spatial_report["gt_error"]["rel_rmse_last"],
+        "gt_linf_max": spatial_report["gt_error"]["linf_max"],
     },
     "temporal_interpolation": {
         "dt_test": temporal_interp_report["dt_test"],
-        #"rmse_mean": temporal_interp_report["rmse_mean"],
-        #"rmse_last": temporal_interp_report["rmse_last"],
-        #"rel_rmse_mean": temporal_interp_report["rel_rmse_mean"],
-        #"rel_rmse_last": temporal_interp_report["rel_rmse_last"],
-        #"linf_max": temporal_interp_report["linf_max"],
         "residual_mean": temporal_interp_report["residual_mean"],
         "residual_last": temporal_interp_report["residual_last"],
         "residual_max": temporal_interp_report["residual_max"],
+        "gt_rel_rmse_mean": temporal_interp_report["gt_error"]["rel_rmse_mean"],
+        "gt_rel_rmse_last": temporal_interp_report["gt_error"]["rel_rmse_last"],
+        "gt_linf_max": temporal_interp_report["gt_error"]["linf_max"],
     },
     "temporal_extrapolation": {
         "train_horizon": temporal_extra_report["train_horizon"],
         "test_horizon": temporal_extra_report["test_horizon"],
-        #"rmse_mean": temporal_extra_report["rmse_mean"],
-        #"rmse_last": temporal_extra_report["rmse_last"],
-        #"rel_rmse_mean": temporal_extra_report["rel_rmse_mean"],
-        #"rel_rmse_last": temporal_extra_report["rel_rmse_last"],
-        #"linf_max": temporal_extra_report["linf_max"],
         "residual_mean": temporal_extra_report["residual_mean"],
         "residual_last": temporal_extra_report["residual_last"],
         "residual_max": temporal_extra_report["residual_max"],
+        "gt_rel_rmse_mean": temporal_extra_report["gt_error"]["rel_rmse_mean"],
+        "gt_rel_rmse_last": temporal_extra_report["gt_error"]["rel_rmse_last"],
+        "gt_linf_max": temporal_extra_report["gt_error"]["linf_max"],
     },
 }
 
-    save_report_json(summary, os.path.join(args.output_dir, "summary.json"))
+    save_report_json(summary, os.path.join(exp_dir, "summary.json"))
 
     print("\n=== Summary ===")
     print(json.dumps(summary, indent=2))
