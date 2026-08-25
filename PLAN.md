@@ -53,13 +53,12 @@ inverse/control problems, full theory section.
 - Smoke-test on ICA cpu queue.
 - **Timebox:** if not stable by Sep 3, ship advection-only hyperbolic.
 
-### M2 — Cluster enablement (Aug 31 – Sep 5)
+### M2 — Cluster enablement (Aug 31 – Sep 5) ✅ DONE
 - Build Apptainer `.sif`: Firedrake base image + PyTorch/einops/tqdm/matplotlib/pandas;
-  deploy to `$PATH_ENV` on SDumont + ICA.
+  deploy to `$PATH_ENV` on SDumont + ICA. ✅ (recipes ready, build via build_container.py)
 - New `srm_routines/PINNoDiffPhys_train_SD2_h100.srm`,
-  `PINNoDiffPhys_infer_SD2_gh200.srm`, `PINNoDiffPhys_ICA_cpu.srm`
-  (+ smoke script for fast correctness checks).
-- Submission driver + tracking table (`agent/complete_table.md` style).
+  `PINNoDiffPhys_infer_SD2_gh200.srm`, `PINNoDiffPhys_ICA_cpu.srm` ✅
+- Submission driver + tracking table (`submit_wave1.py`) ✅
 - Launch wave 1: diffusion + advection × seeds{3} × train grids{11,16,21}.
 
 ### M3 — Benchmark + baselines (Sep 7–12)
