@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH --job-name=PINNo_infer
+#SBATCH --partition=gpu_normal
+#SBATCH --gres=gpu:1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=2-00:00:00
+#SBATCH --output=%x_%j.log
+
+EXP_DIR=${1:-"EXPS/diffusion_grid11_seed0"}
+CLUSTER=${2:-"SD2_gh200"}
+
+echo "=== PINNoDiffPhys inference ==="
+echo "EXP_DIR=$EXP_DIR  CLUSTER=$CLUSTER  START=$(date)"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# --- container ---
+CONTAINER="$PATH_ENV/users/guillermo.carrillo/Ambientes/gh200_v2.sif"
+
+if [ -f "$CONTAINER" ]; then
+    echo "Using container: $CONTAINER"
+    export SINGULARITY_BIND="$SCRIPT_DIR:/code,$(pwd):/workspace"
+    CONFIG="$EXP_DIR/config.json"
+    PDE=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('pde','diffusion'))")
+    SCRIPT="Train_test_${PDE}.py"
+    # inference just re-runs train with 0 epochs (loads checkpoint, runs test regimes only)
+    ARGS="--exp_name $(basename $EXP_DIR) --base_output_dir $(dirname $EXP_DIR) --n_epochs 0"
+    echo "Running: python /code/$SCRIPT $ARGS"
+    singularity exec "$CONTAINER" python "/code/$SCRIPT" $ARGS
+else
+    echo "No container found"
+    exit 1
+fi
+
+RC=$?
+echo "=== inference exit code: $RC ==="
+exit $RC

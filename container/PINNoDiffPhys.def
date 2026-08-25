@@ -1,0 +1,29 @@
+Bootstrap: docker
+From: firedrakeproject/firedrake:latest
+
+%labels
+    Author Guillermo Moreno Carrillo
+    Description PINNoDiffPhys container (Firedrake + PyTorch)
+
+%post
+    # Update and install basics
+    apt-get update && apt-get install -y --no-install-recommends \
+        git wget curl && \
+    rm -rf /var/lib/apt/lists/*
+
+    # Install PyTorch (CPU fallback; override with --build-arg for GPU)
+    pip install --no-cache-dir \
+        torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+    # ML / scientific extras
+    pip install --no-cache-dir \
+        einops tqdm matplotlib pandas
+
+    # Ensure code directory exists
+    mkdir -p /code
+
+%environment
+    export PYTHONPATH="/code:$PYTHONPATH"
+
+%runscript
+    exec python "$@"

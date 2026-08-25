@@ -1,0 +1,69 @@
+#!/bin/bash
+#SBATCH --job-name=PINNo_train
+#SBATCH --partition=gpu_dev
+#SBATCH --gres=gpu:1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=02:00:00
+#SBATCH --output=%x_%j.log
+
+EXP_DIR=${1:-"EXPS/diffusion_grid11_seed0"}
+CLUSTER=${2:-"SD2_h100"}
+
+echo "=== PINNoDiffPhys train ==="
+echo "EXP_DIR=$EXP_DIR  CLUSTER=$CLUSTER  START=$(date)"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# --- container ---
+CONTAINER="$PATH_ENV/users/guillermo.carrillo/Ambientes/h100_v3.sif"
+if [ ! -f "$CONTAINER" ]; then
+    CONTAINER="$PATH_ENV/envs/ICA_v4.sif"
+fi
+
+if [ -f "$CONTAINER" ]; then
+    echo "Using container: $CONTAINER"
+    export SINGULARITY_BIND="$SCRIPT_DIR:/code,$(pwd):/workspace"
+    # read config.json from exp dir
+    CONFIG="$EXP_DIR/config.json"
+    if [ ! -f "$CONFIG" ]; then
+        echo "ERROR: config.json not found in $EXP_DIR"
+        exit 1
+    fi
+    # extract args from config.json
+    PDE=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('pde','diffusion'))")
+    SEED=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('seed',0))")
+    GRID=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('train_grid_n',11))")
+    EPOCHS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('n_epochs',100))")
+    BATCH=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('batch_size',16))")
+    ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('num_rollout',10))")
+    M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
+
+    SCRIPT="Train_test_${PDE}.py"
+    ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir $(dirname $EXP_DIR)"
+
+    if [ "$PDE" = "diffusion" ]; then
+        DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.1))")
+        ARGS="$ARGS --dt $DT"
+    elif [ "$PDE" = "advection" ]; then
+        DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.01))")
+        ARGS="$ARGS --dt $DT"
+    elif [ "$PDE" = "poisson" ]; then
+        ARGS="$ARGS --m_iters $M_ITERS"
+    fi
+
+    echo "Running: python /code/$SCRIPT $ARGS"
+    singularity exec "$CONTAINER" python "/code/$SCRIPT" $ARGS
+else
+    echo "No container found — running with system python"
+    cd "$SCRIPT_DIR"
+    CONFIG="$EXP_DIR/config.json"
+    PDE=$(python -c "import json; c=json.load(open('$CONFIG')); print(c.get('pde','diffusion'))")
+    python "Train_test_${PDE}.py" --exp_name $(basename $EXP_DIR) --base_output_dir $(dirname $EXP_DIR)
+fi
+
+RC=$?
+echo "=== train exit code: $RC ==="
+exit $RC
