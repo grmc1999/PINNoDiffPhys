@@ -89,6 +89,7 @@ inverse/control problems, full theory section.
 | Risk | Mitigation |
 |---|---|
 | Container build friction on clusters | Start `.sif` build early (overlaps M1.5); ICA-only fallback |
+| `diffusion_loss` channel/order bug (`[..,-1]`→`∂u/∂u`, first-order sum instead of Laplacian) | **FIXED** (M2): now `du/dt - K·∇²u` via indices 0..dim-1 spatial, index `dim`=t; validate on smoke |
 | Adjoint memory growth in long rollouts | Modest meshes first (train ≤ ~32², test ≤ ~65²); scale only if time allows |
 | Wave stepper rework slips | Timeboxed to Sep 3; advection covers the hyperbolic family otherwise |
 | Single-author bandwidth | Strict scope table above; deferred items go to journal extension |

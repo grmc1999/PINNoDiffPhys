@@ -2,11 +2,18 @@ import torch
 from .utils import x_grad,vector_grad
 
 
-def diffusion_loss(u,xt,K, dim = 2):
-    """"
-    du/dt - k grad u = f
+def diffusion_loss(u, xt, K, dim=2):
     """
-    return x_grad(u,xt,0,1)[...,-1] - K * torch.sum(x_grad(u,xt,0,1)[...,:dim], axis = -1) # spatial gradient grad u
+    r = du/dt - K * Laplacian(u) = 0
+
+    Feature/coordinate tensor `xt` has channels [x, y, t, u] for a 2D PDE,
+    so the temporal coordinate sits at index `dim` and spatial coords at 0..dim-1.
+    """
+    du = x_grad(u, xt, 0, 1)                  # first partials wrt [x, y, t, u]
+    u_t = du[..., dim]                        # du/dt (t channel is at index dim)
+    d2u = x_grad(u, xt, 0, 2)                 # second partials wrt [x, y, t, u]
+    lap = torch.sum(d2u[..., :dim], axis=-1)  # d2u/dx2 + d2u/dy2
+    return u_t - K * lap
 
 def poisson_residual_loss(u, xt, K=1.0, dim=2):
     """
