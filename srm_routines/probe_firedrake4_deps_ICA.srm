@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --job-name=pino_fdrake4_probe
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=6G
+#SBATCH --time=00:10:00
+#SBATCH --nodelist=cpunode-2-1
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/pino_fdrake4_probe_%j.out
+
+SIF=/share_zeta/Proxy-Sim/guillermo.carrillo/fem_pytorch/envs/firedrake.sif
+echo "=== Dep probe: $SIF ==="
+
+singularity exec "$SIF" python3 -c "
+import sys
+mods = ['torch','numpy','matplotlib','einops','firedrake','scipy']
+for m in mods:
+    try:
+        mod = __import__(m)
+        print(m, 'OK', getattr(mod, '__version__', ''))
+    except Exception as e:
+        print(m, 'MISSING', e)
+" 2>&1
+
+echo "--- python available also as python? ---"
+singularity exec "$SIF" bash -lc 'command -v python; python --version 2>&1' 2>&1
+
+echo "--- end probe ---"
