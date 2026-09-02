@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --job-name=pino_fdrake2_probe
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=6G
+#SBATCH --time=00:10:00
+#SBATCH --nodelist=cpunode-2-1
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/pino_fdrake2_probe_%j.out
+
+SIF=/share_zeta/Proxy-Sim/guillermo.carrillo/fem_pytorch/envs/firedrake.sif
+echo "=== Probe container: $SIF ==="
+ls -la "$SIF" 2>&1
+
+echo "--- python ---"
+singularity exec "$SIF" python --version 2>&1
+
+echo "--- firedrake import ---"
+singularity exec "$SIF" python -c "import firedrake; print('FIREDRAKE_OK')" 2>&1
+
+echo "--- torch ---"
+singularity exec "$SIF" python -c "import torch; print('TORCH', torch.__version__)" 2>&1
+
+echo "--- numpy/matplotlib/einops ---"
+singularity exec "$SIF" python -c "
+import numpy, matplotlib, einops
+print('NUMPY', numpy.__version__)
+print('MATPLOTLIB', matplotlib.__version__)
+print('EINOPS_OK')
+" 2>&1
+
+echo "--- end probe ---"
