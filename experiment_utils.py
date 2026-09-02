@@ -32,7 +32,7 @@ def save_checkpoint(model, optimizer, epoch, losses, path):
         {
             "epoch": epoch,
             "model_state": model.state_dict(),
-            "optimizer_state": optimizer.state_dict(),
+            "optimizer_state": optimizer.state_dict() if optimizer is not None else None,
             "losses": losses,
         },
         path,
