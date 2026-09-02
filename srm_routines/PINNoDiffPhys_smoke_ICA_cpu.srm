@@ -1,34 +1,27 @@
 #!/bin/bash
 #SBATCH --job-name=smoke_PINNoDiff
-#SBATCH --partition=normal
+#SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=00:15:00
-#SBATCH --output=%x_%j.log
+#SBATCH --time=00:30:00
+#SBATCH --nodelist=cpunode-2-1
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/smoke_PINNoDiff_%j.log
 
-# --- arguments ---
-EXP_DIR=${1:-"EXPS/smoke"}
-CLUSTER=${2:-"ICA"}
+# PINNoDiffPhys smoke test (ICA cpu). Validates the diffusion_loss fix
+# plus all steppers (poisson, diffusion, advection).
+. /share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys/bash_routines/set_env.sh ICA
 
 echo "=== PINNoDiffPhys smoke test ==="
-echo "EXP_DIR=$EXP_DIR  CLUSTER=$CLUSTER  START=$(date)"
+echo "CLUSTER=$CLUSTER_ID  START=$(date)"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONTAINER="$PATH_ENV/fem_pytorch/envs/firedrake.sif"
+echo "Using container: $CONTAINER"
 
-# --- container (ICA) ---
-CONTAINER="$PATH_ENV/envs/ICA_v4.sif"
-
-if [ -f "$CONTAINER" ]; then
-    echo "Using container: $CONTAINER"
-    export SINGULARITY_BIND="$SCRIPT_DIR:/code,$(pwd):/workspace"
-    singularity exec "$CONTAINER" python /code/smoke/smoke_test.py
-else
-    echo "No container found at $CONTAINER — running with system python"
-    cd "$SCRIPT_DIR"
-    python smoke/smoke_test.py
-fi
+export SINGULARITY_BIND="$PATH_CODE:/code"
+cd "$PATH_CODE"
+singularity exec "$CONTAINER" python3 /code/smoke/smoke_test.py
 
 RC=$?
 echo "=== smoke test exit code: $RC ==="

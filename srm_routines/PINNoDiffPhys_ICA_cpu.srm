@@ -1,54 +1,53 @@
 #!/bin/bash
 #SBATCH --job-name=PINNo_ICA
-#SBATCH --partition=normal
+#SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=01:00:00
-#SBATCH --output=%x_%j.log
+#SBATCH --nodelist=cpunode-2-1
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_ICA_%j.log
+
+# PINNoDiffPhys wave-1 single-config job (ICA cpu).
+# slurm copies this SRM to the spool dir, so locate the repo via the
+# hardcoded PATH_CODE from set_env.sh.
+. /share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys/bash_routines/set_env.sh ICA
 
 EXP_DIR=${1:-"EXPS/diffusion_grid11_seed0"}
-CLUSTER=${2:-"ICA"}
 
 echo "=== PINNoDiffPhys ICA ==="
-echo "EXP_DIR=$EXP_DIR  CLUSTER=$CLUSTER  START=$(date)"
+echo "EXP_DIR=$EXP_DIR  CLUSTER=$CLUSTER_ID  START=$(date)"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONTAINER="$PATH_ENV/fem_pytorch/envs/firedrake.sif"
+echo "Using container: $CONTAINER"
 
-CONTAINER="$PATH_ENV/envs/ICA_v4.sif"
+CONFIG="$EXP_DIR/config.json"
+cd "$PATH_CODE"
+PDE=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('pde','diffusion'))")
+SEED=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('seed',0))")
+GRID=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('train_grid_n',11))")
+EPOCHS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('n_epochs',50))")
+BATCH=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('batch_size',8))")
+ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('num_rollout',5))")
+M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
 
-if [ -f "$CONTAINER" ]; then
-    echo "Using container: $CONTAINER"
-    export SINGULARITY_BIND="$SCRIPT_DIR:/code,$(pwd):/workspace"
-    CONFIG="$EXP_DIR/config.json"
-    PDE=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('pde','diffusion'))")
-    SEED=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('seed',0))")
-    GRID=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('train_grid_n',11))")
-    EPOCHS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('n_epochs',50))")
-    BATCH=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('batch_size',8))")
-    ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('num_rollout',5))")
-    M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
+SCRIPT="Train_test_${PDE}.py"
+ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir $(dirname $EXP_DIR)"
 
-    SCRIPT="Train_test_${PDE}.py"
-    ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir $(dirname $EXP_DIR)"
-
-    if [ "$PDE" = "diffusion" ]; then
-        DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.1))")
-        ARGS="$ARGS --dt $DT"
-    elif [ "$PDE" = "advection" ]; then
-        DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.01))")
-        ARGS="$ARGS --dt $DT"
-    elif [ "$PDE" = "poisson" ]; then
-        ARGS="$ARGS --m_iters $M_ITERS"
-    fi
-
-    echo "Running: python /code/$SCRIPT $ARGS"
-    singularity exec "$CONTAINER" python "/code/$SCRIPT" $ARGS
-else
-    echo "No container found"
-    exit 1
+if [ "$PDE" = "diffusion" ]; then
+    DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.1))")
+    ARGS="$ARGS --dt $DT"
+elif [ "$PDE" = "advection" ]; then
+    DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.01))")
+    ARGS="$ARGS --dt $DT"
+elif [ "$PDE" = "poisson" ]; then
+    ARGS="$ARGS --m_iters $M_ITERS"
 fi
+
+echo "Running: python /code/$SCRIPT $ARGS"
+export SINGULARITY_BIND="$PATH_CODE:/code,$(pwd):/workspace"
+singularity exec "$CONTAINER" python3 "/code/$SCRIPT" $ARGS
 
 RC=$?
 echo "=== ICA exit code: $RC ==="
