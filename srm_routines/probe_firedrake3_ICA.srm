@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --job-name=pino_fdrake3_probe
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=6G
+#SBATCH --time=00:10:00
+#SBATCH --nodelist=cpunode-2-1
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/pino_fdrake3_probe_%j.out
+
+SIF=/share_zeta/Proxy-Sim/guillermo.carrillo/fem_pytorch/envs/firedrake.sif
+echo "=== Probe container: $SIF ==="
+
+echo "--- available python binaries ---"
+singularity exec "$SIF" bash -lc 'which python python3 2>&1; ls /usr/bin/python* 2>&1; echo PATH=$PATH' 2>&1
+
+echo "--- look for firecracker/firedrake layout ---"
+singularity exec "$SIF" bash -lc 'ls -d /opt/* /root/* /usr/local/* 2>/dev/null' 2>&1
+
+echo "--- try python3 import firedrake ---"
+singularity exec "$SIF" python3 -c "import firedrake; print('FIREDRAKE_OK')" 2>&1
+
+echo "--- try /opt venv if present ---"
+singularity exec "$SIF" bash -lc 'for p in /usr/local/bin/python /opt/venv/bin/python /venv/bin/python /usr/bin/python3; do [ -x "$p" ] && echo "FOUND: $p" && "$p" -c "import firedrake; print(\"FIREDRAKE_OK via $p\")" 2>&1 | head -3; done' 2>&1
+
+echo "--- end probe ---"
