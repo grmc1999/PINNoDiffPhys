@@ -20,6 +20,7 @@ CONTAINER="$PATH_ENV/fem_pytorch/envs/firedrake.sif"
 echo "Using container: $CONTAINER"
 
 export SINGULARITY_BIND="$PATH_CODE:/code"
+export SINGULARITYENV_PYTHONPATH="/code"
 cd "$PATH_CODE"
 singularity exec "$CONTAINER" python3 /code/smoke/smoke_test.py
 
