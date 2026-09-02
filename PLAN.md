@@ -54,11 +54,23 @@ inverse/control problems, full theory section.
 - **Timebox:** if not stable by Sep 3, ship advection-only hyperbolic.
 
 ### M2 — Cluster enablement (Aug 31 – Sep 5) ✅ DONE
-- Build Apptainer `.sif`: Firedrake base image + PyTorch/einops/tqdm/matplotlib/pandas;
-  deploy to `$PATH_ENV` on SDumont + ICA. ✅ (recipes ready, build via build_container.py)
+- **Container resolved (Sep 2):** Firedrake already lives in
+  `$PATH_ENV/fem_pytorch/envs/firedrake.sif` on ICA — **no rebuild needed**
+  (has firedrake, torch 2.4.1+cu121, numpy, matplotlib, einops, scipy;
+  entrypoint is `python3`). ICA SRMs + `set_env.sh` repointed & verified.
 - New `srm_routines/PINNoDiffPhys_train_SD2_h100.srm`,
   `PINNoDiffPhys_infer_SD2_gh200.srm`, `PINNoDiffPhys_ICA_cpu.srm` ✅
 - Submission driver + tracking table (`submit_wave1.py`) ✅
+- **ICA smoke test PASSED (job 592118):** all 5 tests green
+  (experiment_utils, gt_metrics, diffusion, advection, poisson) — validates
+  the `diffusion_loss` fix + every stepper end-to-end. ✅
+  Fixes surfaced & applied by the smoke run on the real container:
+  `geometric_dimension()` (method, not attr) in `Trainer.py` (7×);
+  `save_checkpoint` handles `optimizer=None`; drop `feature_builder` kwarg
+  (CNN subclasses define it as a method; removed broken `del`);
+  trainer uses `build_torch_state_step_operator` (all three steppers inherit
+  the state-based operator); `build_dense_point_eval_matrix` builds per-basis
+  columns via a single observation-op; `TorchPointCloudLift` lift in float32.
 - Launch wave 1: diffusion + advection × seeds{3} × train grids{11,16,21}.
 
 ### M3 — Benchmark + baselines (Sep 7–12)
@@ -89,7 +101,8 @@ inverse/control problems, full theory section.
 | Risk | Mitigation |
 |---|---|
 | Container build friction on clusters | Start `.sif` build early (overlaps M1.5); ICA-only fallback |
-| `diffusion_loss` channel/order bug (`[..,-1]`→`∂u/∂u`, first-order sum instead of Laplacian) | **FIXED** (M2): now `du/dt - K·∇²u` via indices 0..dim-1 spatial, index `dim`=t; validate on smoke |
+| `diffusion_loss` channel/order bug (`[..,-1]`→`∂u/∂u`, first-order sum instead of Laplacian) | **FIXED + VALIDATED on ICA** (M2): now `du/dt - K·∇²u` via indices 0..dim-1 spatial, index `dim`=t; smoke PASSED |
+| Poisson adjoint warning "Adjoint value is None" | Poisson step has no `u_n` term → step is control-independent (zero gradient through solver); expected for elliptic. Wave-1 launches diffusion+advection first; poisson handled in elliptic track (M3) |
 | Adjoint memory growth in long rollouts | Modest meshes first (train ≤ ~32², test ≤ ~65²); scale only if time allows |
 | Wave stepper rework slips | Timeboxed to Sep 3; advection covers the hyperbolic family otherwise |
 | Single-author bandwidth | Strict scope table above; deferred items go to journal extension |
