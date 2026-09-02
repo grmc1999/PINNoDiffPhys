@@ -635,7 +635,7 @@ class FiredrakePINNSBasedSOLTrainer:
         self.dt = dt
         self.loss = loss
         #self.feature_builder = feature_builder or append_time_channel
-        self.step_op = physical_model.build_torch_step_operator()
+        self.step_op = physical_model.build_torch_state_step_operator()
         self.observe_op = physical_model.build_torch_point_observation_operator()
         n_dofs = physical_model.V.dim()
         E = physical_model.build_dense_point_eval_matrix(
