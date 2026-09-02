@@ -299,13 +299,15 @@ class FiredrakeTimeStepper(ABC):
 
         n_dofs = self.V.dim()
 
+        observation_op = self.build_torch_point_observation_operator()
+
         with torch.no_grad():
             for start in range(0, n_dofs, chunk_size):
                 end = min(start + chunk_size, n_dofs)
                 x = torch.zeros((end - start, n_dofs), dtype=dtype, device=device)
                 x[torch.arange(end - start, device=device), torch.arange(start, end, device=device)] = 1.0
 
-                y = self.observation_op(x)
+                y = observation_op(x)
                 if y.ndim == 1:
                     y = y.unsqueeze(0)
                 y = y.reshape(y.shape[0], -1)
