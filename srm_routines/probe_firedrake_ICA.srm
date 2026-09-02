@@ -10,20 +10,22 @@
 #SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/pino_fdrake_probe_%j.out
 
 # Probe whether the ICA container already carries Firedrake.
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bash_routines/set_env.sh" ICA
+# PATH_CODE is hardcoded (see set_env.sh); slurm copies this script to
+# the spool dir so BASH_SOURCE cannot locate the repo.
+. /share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys/bash_routines/set_env.sh ICA
 
 SIF="$CONTAINER_PATH"
 echo "=== Probe container: $SIF ==="
 ls -la "$SIF" 2>&1
 
 echo "--- python ---"
-singularity exec -B "$SRC_ROOT":/code "$SIF" python --version 2>&1
+singularity exec -B "$PATH_CODE":/code "$SIF" python --version 2>&1
 
 echo "--- firedrake import ---"
-singularity exec -B "$SRC_ROOT":/code "$SIF" python -c "import firedrake; print('FIREDRAKE_OK')" 2>&1
+singularity exec -B "$PATH_CODE":/code "$SIF" python -c "import firedrake; print('FIREDRAKE_OK')" 2>&1
 
 echo "--- torch + numpy + matplotlib + einops ---"
-singularity exec -B "$SRC_ROOT":/code "$SIF" python -c "
+singularity exec -B "$PATH_CODE":/code "$SIF" python -c "
 import torch, numpy, matplotlib, einops
 print('TORCH', torch.__version__)
 print('NUMPY', numpy.__version__)
