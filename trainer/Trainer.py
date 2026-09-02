@@ -41,7 +41,7 @@ class TorchPointCloudLift(torch.nn.Module):
         if point_eval_matrix.ndim != 2:
             raise ValueError("point_eval_matrix must have shape [n_points, n_dofs].")
 
-        E = point_eval_matrix.detach()
+        E = point_eval_matrix.detach().to(torch.float32)
         n_points, n_dofs = E.shape
         eye = torch.eye(n_dofs, dtype=E.dtype, device=E.device)
         lift = torch.linalg.solve(E.T @ E + float(reg) * eye, E.T)  # [n_dofs, n_points]
