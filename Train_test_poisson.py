@@ -77,7 +77,6 @@ def build_trainer(mesh, point_grid, simulation_steps, st_model,
         simulation_steps=simulation_steps,
         dt=1.0,
         loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0)) ** 2,
-        feature_builder=None,
     )
     return trainer
 

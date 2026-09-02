@@ -811,7 +811,6 @@ class FiredrakePINNSBasedSOLTrainer:
 class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
   def __init__(self,**args):
     super().__init__(**args)
-    del self.feature_builder
 
   def feature_builder(self,u: torch.Tensor,t: float):
     u = u.reshape(self.physical_model.evaluation_shape[:-1]+(1,))
@@ -835,7 +834,6 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
 class FiredrakePINNSBasedSOLTrainerConsistentCNN(FiredrakePINNSBasedSOLTrainer):
     def __init__(self,**args):
         super().__init__(**args)
-        del self.feature_builder
 
     def feature_builder(self, u_points: torch.Tensor, t: float) -> torch.Tensor:
         """

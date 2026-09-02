@@ -39,7 +39,6 @@ def test_diffusion():
         optimizer=torch.optim.Adam(model.parameters(), lr=1e-4),
         simulation_steps=2, dt=0.1,
         loss=lambda u, x: (diffusion_loss(u, x, K=1.0)) ** 2,
-        feature_builder=None,
     )
     X = fd.SpatialCoordinate(mesh)
     u0 = fd.Function(stepper.V).interpolate(
@@ -73,7 +72,6 @@ def test_advection():
         optimizer=torch.optim.Adam(model.parameters(), lr=1e-4),
         simulation_steps=2, dt=0.01,
         loss=lambda u, x: (diffusion_loss(u, x, K=1.0)) ** 2,
-        feature_builder=None,
     )
     X = fd.SpatialCoordinate(mesh)
     u0 = fd.Function(stepper.V).interpolate(
@@ -104,7 +102,6 @@ def test_poisson():
         optimizer=torch.optim.Adam(model.parameters(), lr=1e-4),
         simulation_steps=2, dt=1.0,
         loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0)) ** 2,
-        feature_builder=None,
     )
     X = fd.SpatialCoordinate(mesh)
     u0 = fd.Function(stepper.V).interpolate(
