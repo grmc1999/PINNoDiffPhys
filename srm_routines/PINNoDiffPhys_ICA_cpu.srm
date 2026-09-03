@@ -6,7 +6,6 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=01:00:00
-#SBATCH --nodelist=cpunode-2-1
 #SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_ICA_%j.log
 
 # PINNoDiffPhys wave-1 single-config job (ICA cpu).
