@@ -99,3 +99,61 @@ def gt_error_metrics(pred_states, gt_grids):
         "rel_rmse_last": float(rel_rmse[-1]),
         "linf_max": float(linf.max()),
     }
+
+
+def compute_training_error(trainer, u0, n_steps, point_grid):
+    """Corrected-model rollout error vs ground truth evaluated on *point_grid*.
+
+    Rolls out the trained (corrected) model for ``n_steps`` and compares the
+    predicted ``u`` field against the pure-solver ground truth sampled on the
+    same grid. Returns the ``gt_error_metrics`` dict plus the number of steps.
+    """
+    pred, _, _, _, _ = trainer.predict_rollout(u0, 0.0, n_steps,
+                                               spatial_sample=point_grid)
+    gt = rollout_ground_truth_on_grid(trainer.physical_model, u0, len(pred),
+                                      point_grid)
+    metrics = gt_error_metrics(pred, gt)
+    metrics["n_steps"] = int(len(pred))
+    return metrics
+
+
+def train_with_error_report(trainer, u0, n_steps, point_grid,
+                            n_epochs, batch_size, save_every, exp_dir):
+    """Train with a ground-truth training-error report at each checkpoint.
+
+    Runs the same checkpoint loop as the individual train scripts but, in
+    addition to the residual ``loss``, computes the corrected-model rollout
+    error against ground truth after each checkpoint and records it.
+
+    Returns
+    -------
+    (losses, train_errors) where losses is the per-epoch residual loss and
+    train_errors is a list (one entry per checkpoint) of metric dicts from
+    :func:`compute_training_error`.
+    """
+    losses = []
+    train_errors = []
+    pre_metrics = compute_training_error(trainer, u0, n_steps, point_grid)
+    train_errors.append({"epoch": 0, **pre_metrics})
+    print(f"  [train-error] epoch 0/{n_epochs}  "
+          f"rel_rmse={pre_metrics['rel_rmse_mean']:.4f}  "
+          f"linf={pre_metrics['linf_max']:.4f}")
+
+    for start in range(0, n_epochs, save_every):
+        n = min(save_every, n_epochs - start)
+        chunk_losses = trainer.train(epochs=n, batch_size=batch_size)
+        losses.extend(chunk_losses)
+        save_checkpoint(trainer.st_model, trainer.optimizer, start + n, losses,
+                        os.path.join(exp_dir, "checkpoint.pt"))
+
+        metrics = compute_training_error(trainer, u0, n_steps, point_grid)
+        train_errors.append({"epoch": start + n, **metrics})
+        print(f"  [checkpoint] epoch {start+n}/{n_epochs}  "
+              f"loss={chunk_losses[-1]:.6f}  "
+              f"rel_rmse={metrics['rel_rmse_mean']:.4f}  "
+              f"linf={metrics['linf_max']:.4f}")
+
+    np.save(os.path.join(exp_dir, "train_errors.npy"), train_errors)
+    with open(os.path.join(exp_dir, "train_errors.json"), "w") as f:
+        json.dump(train_errors, f, indent=2)
+    return losses, train_errors

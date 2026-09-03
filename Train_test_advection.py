@@ -12,7 +12,7 @@ import firedrake as fd
 from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
 from trainer.Trainer import ImplicitLinearAdvectionStepper, FiredrakePINNSBasedSOLTrainerCNN
 from DL_models.PINNS.Residual_losses import diffusion_loss
-from experiment_utils import (set_seed, make_exp_dir, save_checkpoint, rollout_ground_truth_on_grid, gt_error_metrics)
+from experiment_utils import (set_seed, make_exp_dir, save_checkpoint, rollout_ground_truth_on_grid, gt_error_metrics, train_with_error_report)
 
 
 
@@ -405,13 +405,18 @@ if __name__ == "__main__":
     train_trainer.generate_ground_truth(u0, args.num_rollout)
 
     losses = []
-    for start in range(0, args.n_epochs, args.save_every):
-        n = min(args.save_every, args.n_epochs - start)
-        chunk_losses = train_trainer.train(epochs=n, batch_size=args.batch_size)
-        losses.extend(chunk_losses)
-        save_checkpoint(st_model, train_trainer.optimizer, start + n, losses,
-                        os.path.join(exp_dir, "checkpoint.pt"))
-        print(f"  [checkpoint] epoch {start+n}/{args.n_epochs}  loss={chunk_losses[-1]:.6f}")
+    train_errors = []
+    train_error_steps = 3
+    losses, train_errors = train_with_error_report(
+        trainer=train_trainer,
+        u0=u0,
+        n_steps=train_error_steps,
+        point_grid=train_grid,
+        n_epochs=args.n_epochs,
+        batch_size=args.batch_size,
+        save_every=args.save_every,
+        exp_dir=exp_dir,
+    )
 
     if losses is None:
         losses = []
@@ -525,6 +530,7 @@ if __name__ == "__main__":
         "num_rollout_train": args.num_rollout,
         "train_grid_n": args.train_grid_n,
         "final_loss": float(losses[-1]) if len(losses) > 0 else None,
+        "train_errors": train_errors,
     },
     "spatial_interpolation": {
         "grid_test_n": args.spatial_test_n,
