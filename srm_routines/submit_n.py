@@ -34,7 +34,7 @@ def ensure_config(rel_exp, epochs=20):
     exp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     os.chdir(exp_dir)
     _, cfg = sw.create_experiment(
-        "EXPS", pde, seed, grid, overrides={"n_epochs": epochs}
+        "EXPS", pde, seed, grid, overrides={"n_epochs": epochs, "batch_size": 8}
     )
     return rel_exp
 
