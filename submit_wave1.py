@@ -3,13 +3,13 @@
 
 Usage:
     python submit_wave1.py --dry-run        # generate configs only
-    python submit_wave1.py                  # generate + submit
+    python submit_wave1.py                  # generate + submit (paramiko)
     python submit_wave1.py --cluster ICA    # submit to ICA only
+    python submit_wave1.py --pde diffusion  # submit specific PDE only
 """
 import argparse
 import json
 import os
-import subprocess
 from pathlib import Path
 
 # ── experiment grid ──────────────────────────────────────────────
@@ -44,21 +44,25 @@ EXPERIMENTS = {
 }
 
 # ── cluster connection info ──────────────────────────────────────
+# path_code = canonical deploy dir on the remote (srm_routines/set_env.sh)
 CLUSTERS = {
     "SD2_h100": {
         "host": "146.134.176.5",
         "user": "guillermo.carrillo",
         "srm": "srm_routines/PINNoDiffPhys_train_SD2_h100.srm",
+        "path_code": "/petrobr/parceirosbr/proxy-sim/users/guillermo.carrillo/PINNoDiffPhys",
     },
     "SD2_gh200": {
         "host": "146.134.176.5",
         "user": "guillermo.carrillo",
         "srm": "srm_routines/PINNoDiffPhys_infer_SD2_gh200.srm",
+        "path_code": "/petrobr/parceirosbr/proxy-sim/users/guillermo.carrillo/PINNoDiffPhys",
     },
     "ICA": {
         "host": "139.82.152.10",
         "user": "gmorenoc",
         "srm": "srm_routines/PINNoDiffPhys_ICA_cpu.srm",
+        "path_code": "/share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys",
     },
 }
 
@@ -109,32 +113,52 @@ def create_experiment(base_dir, pde_name, seed, grid_n, overrides=None):
     return exp_dir, cfg
 
 
+def _ica_client():
+    from srm_routines.ica_ssh import ICA
+
+    return ICA(host=CLUSTERS["ICA"]["host"], user=CLUSTERS["ICA"]["user"])
+
+
+def submit_ica(exp_dir, cluster_name):
+    """Upload config to the ICA deploy dir and sbatch the SRM via paramiko."""
+    from srm_routines.ica_ssh import ICA
+
+    cl = CLUSTERS[cluster_name]
+    path_code = cl["path_code"]
+
+    # relative exp dir (e.g. EXPS/diffusion_grid11_seed0) on the remote
+    rel_exp = exp_dir.replace("\\", "/")
+
+    with ICA(host=cl["host"], user=cl["user"]) as ica:
+        # ensure remote EXPS/<exp> and upload config.json
+        ica.run(f"mkdir -p {path_code}/{rel_exp}")
+        remote_cfg = f"{path_code}/{rel_exp}/config.json"
+        local_cfg = os.path.join(exp_dir, "config.json")
+        ica.sftp_put(local_cfg, remote_cfg)
+        print(f"    -> uploaded {local_cfg} -> {remote_cfg}")
+
+        # submit from PATH_CODE
+        st, out, err = ica.run(
+            f"cd {path_code} && sbatch {cl['srm']} {rel_exp} {cluster_name}",
+            timeout=60,
+        )
+        # stdout has "Submitted batch job <id>"
+        job_id = None
+        for token in out.split():
+            if token.isdigit():
+                job_id = token
+                break
+        print(f"    -> job {job_id}" if job_id else f"    -> ??? {out} {err}")
+        return job_id
+
+
 def submit_job(cluster_name, exp_dir):
     cl = CLUSTERS[cluster_name]
-    ssh_target = f"{cl['user']}@{cl['host']}"
-    srm = cl["srm"]
-
-    cmd = (
-        f'cd {os.path.basename(os.getcwd())} && '
-        f'sbatch --output={exp_dir}/log.out {srm} {exp_dir} {cluster_name}'
-    )
-    # Use ssh to submit
-    full_cmd = ["ssh", "-o", "ConnectTimeout=10", ssh_target, cmd]
-    print(f"  Submitting: ssh {ssh_target} '{cmd}'")
-    try:
-        result = subprocess.run(
-            full_cmd, capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0:
-            job_id = result.stdout.strip().split()[-1]
-            print(f"    -> job {job_id}")
-            return job_id
-        else:
-            print(f"    -> FAILED: {result.stderr.strip()}")
-            return None
-    except subprocess.TimeoutExpired:
-        print("    -> TIMEOUT")
-        return None
+    if cluster_name == "ICA":
+        return submit_ica(exp_dir, cluster_name)
+    # Non-ICA clusters not wired to paramiko yet.
+    print(f"    -> SKIP: cluster '{cluster_name}' not yet wired to paramiko")
+    return None
 
 
 def main():
@@ -146,6 +170,10 @@ def main():
     parser.add_argument("--base_output_dir", type=str, default="EXPS")
     parser.add_argument("--pde", type=str, default=None,
                         help="Submit specific PDE only (diffusion/advection/poisson)")
+    parser.add_argument("--force-cluster", type=str, default=None,
+                        help="Override the target cluster for every selected experiment")
+    parser.add_argument("--epochs", type=int, default=None,
+                        help="Override n_epochs in every generated config")
     args = parser.parse_args()
 
     os.makedirs(args.base_output_dir, exist_ok=True)
@@ -154,15 +182,16 @@ def main():
     for pde_name, pde_cfg in EXPERIMENTS.items():
         if args.pde and pde_name != args.pde:
             continue
-        cluster = pde_cfg["cluster"]
+        cluster = args.force_cluster or pde_cfg["cluster"]
         if args.cluster and cluster != args.cluster:
             continue
 
         print(f"\n=== {pde_name} (cluster: {cluster}) ===")
         for seed in pde_cfg["seeds"]:
             for grid_n in pde_cfg["train_grid_ns"]:
+                overrides = {"n_epochs": args.epochs} if args.epochs else None
                 exp_dir, cfg = create_experiment(
-                    args.base_output_dir, pde_name, seed, grid_n
+                    args.base_output_dir, pde_name, seed, grid_n, overrides
                 )
                 print(f"  Config: {exp_dir}/config.json")
 
