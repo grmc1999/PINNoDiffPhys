@@ -40,6 +40,10 @@ def ensure_config(rel_exp, epochs=20):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--srm", default="PINNoDiffPhys_ICA_cpu.srm")
+    args = ap.parse_args()
     submitted = []
     with ICA() as ica:
         for rel_exp in EXP_LIST:
@@ -50,7 +54,7 @@ def main():
             ica.run(f"mkdir -p {PATH_CODE}/{rel_exp}")
             ica.sftp_put(local_cfg, f"{PATH_CODE}/{rel_exp}/config.json")
             st, out, err = ica.run(
-                f"cd {PATH_CODE} && sbatch srm_routines/PINNoDiffPhys_ICA_cpu.srm {rel_exp} {CLUSTER}",
+                f"cd {PATH_CODE} && sbatch srm_routines/{args.srm} {rel_exp} {CLUSTER}",
                 timeout=60,
             )
             job_id = None
