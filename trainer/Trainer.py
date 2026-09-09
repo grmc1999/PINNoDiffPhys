@@ -710,7 +710,7 @@ class FiredrakePINNSBasedSOLTrainer:
             #current = corrected[:,:,0] # [B p v] # "squeeze"
             current_v = corrected_v
 
-        return states_pred, states_corr, states_in
+        return states_pred, states_corr, states_in, states_phys_v
 
     def train(self, epochs: int, batch_size: int = 8):
         losses = []
@@ -725,7 +725,7 @@ class FiredrakePINNSBasedSOLTrainer:
                 t0 = self.T[idx]
 
                 u0_torch = firedrake_field_to_torch(u0_fd, batched=True).float()
-                states_pred, _, states_in = self.forward_prediction_correction_from_state(u0_torch, t0)
+                states_pred, _, states_in, _ = self.forward_prediction_correction_from_state(u0_torch, t0)
 
                 batch_pred.extend(states_pred)
                 batch_in.extend(states_in)
@@ -757,23 +757,10 @@ class FiredrakePINNSBasedSOLTrainer:
         self.n_steps = n_steps
 
         #with torch.no_grad():
-        states_pred, states_corr, states_in = self.forward_prediction_correction_from_state(
+        states_pred, states_corr, states_in, states_phys_v = self.forward_prediction_correction_from_state(
             fd.ml.pytorch.to_torch(u0),t0)
         #uncorrected_sol = list(fd.ml.pytorch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
-        _vom = fd.VertexOnlyMesh(
-            self.physical_model.V.mesh(),
-            self.physical_model.point_evaluator.reshape(-1, self.physical_model.V.mesh().geometric_dimension()),
-            reorder=False,
-        )
-        _P0DG = fd.FunctionSpace(_vom, "DG", 0)
-        uncorrected_sol = []
-        for state_in in states_in:
-            u_vals = state_in[:, :, -1].detach().cpu().numpy().ravel()
-            u_fd = fd.Function(_P0DG)
-            u_fd.dat.data[:] = u_vals
-            u_sol = fd.Function(self.physical_model.V)
-            u_sol.interpolate(u_fd)
-            uncorrected_sol.append(u_sol)
+        uncorrected_sol = list(fd.ml.pytorch.from_torch(phys_v.reshape(-1), self.physical_model.V) for phys_v in states_phys_v)
         # over sample
         if isinstance(spatial_sample,np.ndarray):
             vom = fd.VertexOnlyMesh(
