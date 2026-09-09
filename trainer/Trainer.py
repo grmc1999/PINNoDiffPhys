@@ -760,7 +760,20 @@ class FiredrakePINNSBasedSOLTrainer:
         states_pred, states_corr, states_in = self.forward_prediction_correction_from_state(
             fd.ml.pytorch.to_torch(u0),t0)
         #uncorrected_sol = list(fd.ml.pytorch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
-        uncorrected_sol = list(fd.ml.pytorch.from_torch(state_in[:,:,-1], self.physical_model.V) for state_in in states_in)
+        _vom = fd.VertexOnlyMesh(
+            self.physical_model.V.mesh(),
+            self.physical_model.point_evaluator.reshape(-1, self.physical_model.V.mesh().geometric_dimension()),
+            reorder=False,
+        )
+        _P0DG = fd.FunctionSpace(_vom, "DG", 0)
+        uncorrected_sol = []
+        for state_in in states_in:
+            u_vals = state_in[:, :, -1].detach().cpu().numpy().ravel()
+            u_fd = fd.Function(_P0DG)
+            u_fd.dat.data[:] = u_vals
+            u_sol = fd.Function(self.physical_model.V)
+            u_sol.interpolate(u_fd)
+            uncorrected_sol.append(u_sol)
         # over sample
         if isinstance(spatial_sample,np.ndarray):
             vom = fd.VertexOnlyMesh(
