@@ -233,8 +233,13 @@ def train_with_error_report(trainer, u0, n_steps, point_grid,
     os.makedirs(plot_dir, exist_ok=True)
 
     def _emit_images(epoch):
-        """Learning-process + solution-quality images for the latest state."""
-        lpath = os.path.join(plot_dir, f"learning_epoch_{epoch:03d}.png")
+        """Regenerate images for the latest checkpoint state.
+
+        The learning-process image is replaced on every checkpoint, while the
+        solution-quality snapshot is written to an epoch-specific file that is
+        never overwritten.
+        """
+        lpath = os.path.join(plot_dir, "learning.png")
         spath = os.path.join(plot_dir, f"solution_epoch_{epoch:03d}.png")
         plot_learning_process(losses, train_errors, lpath)
         plot_solution_snapshots(_cur_pred, _cur_gt, _cur_times, spath)

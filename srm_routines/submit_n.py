@@ -44,10 +44,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--srm", default="PINNoDiffPhys_ICA_cpu.srm")
     ap.add_argument("--epochs", type=int, default=20, help="n_epochs for each config")
+    ap.add_argument("--only", default=None,
+                    help="submit only this rel exp dir, e.g. EXPS/poisson_grid11_seed0")
     args = ap.parse_args()
     submitted = []
+    exp_list = [args.only] if args.only else EXP_LIST
     with ICA() as ica:
-        for rel_exp in EXP_LIST:
+        for rel_exp in exp_list:
             ensure_config(rel_exp, epochs=args.epochs)
             local_cfg = os.path.join(
                 "EXPS", rel_exp.replace("EXPS/", ""), "config.json"
