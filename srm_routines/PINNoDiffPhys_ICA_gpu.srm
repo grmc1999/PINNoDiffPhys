@@ -33,7 +33,7 @@ ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('nu
 M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
 
 SCRIPT="Train_test_${PDE}.py"
-ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir $(dirname $EXP_DIR)"
+ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir /code/EXPS"
 
 if [ "$PDE" = "diffusion" ]; then
     DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.1))")

@@ -32,7 +32,7 @@ ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('nu
 M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
 
 SCRIPT="Train_test_${PDE}.py"
-ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir $(dirname $EXP_DIR)"
+ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir /code/EXPS"
 
 if [ "$PDE" = "diffusion" ]; then
     DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.1))")
@@ -50,4 +50,8 @@ singularity exec "$CONTAINER" python3 "/code/$SCRIPT" $ARGS
 
 RC=$?
 echo "=== ICA exit code: $RC ==="
+echo "--- artifacts check ---"
+ls -la "$EXP_DIR/plots" 2>&1 | head -20
+test -s "$EXP_DIR/summary.json" && echo "ARTIFACTS_OK: summary.json present" || echo "WARN: summary.json missing (output writes lost?)"
+echo "--- end artifacts check ---"
 exit $RC
