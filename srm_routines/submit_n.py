@@ -2,7 +2,7 @@
 """Submit a small, explicit list of wave-1 configs to ICA (capped concurrency).
 
 Usage:
-    python srm_routines/submit_n.py  # submits the EXPS python in EXP_LIST
+    python -m srm_routines.submit_n [--epochs N]  # submits EXP_LIST configs
 """
 import json
 import os
@@ -43,11 +43,12 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--srm", default="PINNoDiffPhys_ICA_cpu.srm")
+    ap.add_argument("--epochs", type=int, default=20, help="n_epochs for each config")
     args = ap.parse_args()
     submitted = []
     with ICA() as ica:
         for rel_exp in EXP_LIST:
-            ensure_config(rel_exp, epochs=20)
+            ensure_config(rel_exp, epochs=args.epochs)
             local_cfg = os.path.join(
                 "EXPS", rel_exp.replace("EXPS/", ""), "config.json"
             )
