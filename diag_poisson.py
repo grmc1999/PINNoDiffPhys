@@ -22,16 +22,16 @@ def main():
     print("n_dofs", n_dofs)
 
     tape = get_working_tape()
-    tape.clear_blocks()
+    base_blocks = len(tape.get_blocks())
 
     op = stepper.build_torch_step_operator()
-    print("blocks right after build:", [type(b).__name__ for b in tape.get_blocks()])
+    print("blocks right after build:", [type(b).__name__ for b in tape.get_blocks()[base_blocks:]])
 
     x = torch.rand(n_dofs, dtype=torch.float32)
     print("op(x):", op(x))
 
     print("=== grad test: full step operator (with interpolate to P0DG grid) ===")
-    tape.clear_blocks()
+    base_blocks = len(tape.get_blocks())
     x = torch.rand(n_dofs, dtype=torch.float32)
     y = op(x) if hasattr(op, "forward") else op.__call__(x)
     xr = x.detach().clone().requires_grad_(True)
@@ -40,20 +40,20 @@ def main():
     if y2.requires_grad:
         g = torch.autograd.grad(y2.sum(), xr)[0]
         print("grad norm", float(g.norm()), "nz", int((g != 0).sum()))
-    print("blocks after forward+grad:", [(type(b).__name__, getattr(b, '_input_slots', len(getattr(b,'dependencies', ['?'])))) for b in tape.get_blocks()])
+    print("blocks for forward:", [(type(b).__name__, getattr(b, "dependencies", ["?"])) for b in tape.get_blocks()[base_blocks:]])
 
     print("=== grad test B: red on raw Function u_out (NO interpolate) ===")
     fd.adjoint.continue_annotation()
-    tape.clear_blocks()
+    base_blocks = len(tape.get_blocks())
     u_n = fd.Function(stepper.V, name="u_n_control_poisson")
     u_out = stepper.iterative_step(u_n)
     red = ReducedFunctional(u_out, Control(u_n))
     fd.adjoint.stop_annotating()
     opB = fem_operator(red)
-    print("blocks for iterative_step chain:", [type(b).__name__ for b in tape.get_blocks()])
+    print("blocks for iterative_step chain:", [type(b).__name__ for b in tape.get_blocks()[base_blocks:]])
     xr = torch.rand(n_dofs, dtype=torch.float32).requires_grad_(True)
     yB = opB(xr)
-    print("yB.requires_grad", yB.requires_grad, [type(b).__name__ for b in tape.get_blocks()])
+    print("yB.requires_grad", yB.requires_grad, [type(b).__name__ for b in tape.get_blocks()[base_blocks:]])
     if yB.requires_grad:
         gB = torch.autograd.grad(yB.sum(), xr)[0]
         print("gradB norm", float(gB.norm()), "nz", int((gB != 0).sum()))
