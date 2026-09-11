@@ -87,7 +87,7 @@ def main():
         state["captured"] = True
         save_state(state)
         for rel_exp, epochs in FOLLOWUPS:
-            if rel_exp in state:
+            if state.get(rel_exp):
                 print("already submitted:", rel_exp, "->", state[rel_exp])
                 continue
             out, err = submit_one(ica, rel_exp, epochs)
