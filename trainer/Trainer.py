@@ -579,16 +579,22 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
         return u_cur
 
     def build_torch_state_step_operator(self):
-        """The trainer wires step_op to this method.
+        """State-step operator used by the trainer (step_op).
 
-        The inherited FiredrakeTimeStepper implementation solves the exact
-        elliptic residual, which does NOT depend on the input state u_n, so
-        firedrake-adjoint reports "Adjoint value is None" and the gradient is
-        zero. Instead, make the trainable step the *iterative* Richardson map
-        u_n -> u_{n+1} (m_iters iterations, starts from u_n), which carries the
-        dependency through taped variational solves back to the CNN correction.
+        Runs the *iterative* Richardson map u_n -> u_{n+1} (starts from u_n,
+        so it carries the dependency the trainer's diff through observe/lift/
+        CNN needs) and returns raw Function dofs (V space), matching the
+        convention of FiredrakeTimeStepper.build_torch_state_step_operator
+        that the observe operator's from_torch expects. The inherited version
+        solved the exact elliptic residual, which does NOT depend on u_n and
+        produced a None adjoint (zero gradient).
         """
-        return self.build_torch_step_operator()
+        fd.adjoint.continue_annotation()
+        u_n = fd.Function(self.V, name="u_n_control_poisson")
+        u_out = self.iterative_step(u_n)
+        red = ReducedFunctional(u_out, Control(u_n))
+        fd.adjoint.stop_annotating()
+        return fem_operator(red)
 
     def build_torch_step_operator(self):
         fd.adjoint.continue_annotation()
