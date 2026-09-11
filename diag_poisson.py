@@ -123,30 +123,25 @@ def main():
     print("test D pred0 grad_fn:", type(pred[0].grad_fn).__name__ if pred[0].grad_fn else None)
     _root.removeHandler(hlog)
 
-    print("=== grad test E: stability scan (m=5, 10x10 CG1) ===")
-    def iter_stats(pc, rel):
-        mesh10 = fd.UnitSquareMesh(10, 10)
-        g11 = np.stack(np.meshgrid(np.linspace(0, 1, 11), np.linspace(0, 1, 11)), axis=-1)
-        ste = T.IterativePoissonSolverStepper(
-            mesh=mesh10, m_iters=5, relaxation=rel, diffusivity=1.0,
-            forcing=1.0, bc_value=0.0, degree=1, point_evaluator=g11,
-            solver_parameters={"snes_type": "ksponly", "ksp_type": "preonly", "pc_type": pc},
-        )
-        out = ste.iterative_step(fd.Function(ste.V))
-        d = np.asarray(out.dat.data)
-        return float(np.max(d)), float(np.min(d)), bool(np.isnan(d).any())
-    fd.adjoint.pause_annotation()
+    print("=== grad test E: exact state op (stable) + FD residual loss ===")
+    import firedrake as _fd
+    mesh10 = _fd.UnitSquareMesh(10, 10)
+    g11 = np.stack(np.meshgrid(np.linspace(0, 1, 11), np.linspace(0, 1, 11)), axis=-1)
+    ste = T.IterativePoissonSolverStepper(
+        mesh=mesh10, m_iters=5, relaxation=1.0, diffusivity=1.0,
+        forcing=1.0, bc_value=0.0, degree=1, point_evaluator=g11,
+    )
+    opE = ste.build_torch_state_step_operator()
+    xr = torch.rand(ste.V.dim(), dtype=torch.float32).requires_grad_(True)
+    yE = opE(xr)
+    print("exact-step: requires_grad", yE.requires_grad, "nan", bool(yE.isnan().any()),
+          "range", float(yE.max()), float(yE.min()))
+    from torch.autograd import grad as _ag
     try:
-        for pc in ["lu", "jacobi"]:
-            for rel in [1.0, 0.5, 0.1]:
-                try:
-                    mx, mn, nan = iter_stats(pc, rel)
-                    print("pc", pc, "rel", rel, "max", mx, "min", mn, "nan", nan)
-                except Exception as ex:
-                    print("pc", pc, "rel", rel, "ERR", type(ex).__name__, str(ex)[:100])
-    finally:
-        fd.adjoint.continue_annotation()
-
+        gE = _ag(yE.sum(), xr, allow_unused=True)[0]
+        print("exact-step grad wrt input:", "None" if gE is None else float(gE.abs().max()))
+    except Exception as ex:
+        print("exact-step grad ERR", type(ex).__name__, str(ex)[:120])
     print("DONE")
 
 

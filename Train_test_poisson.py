@@ -1,7 +1,14 @@
 import argparse
 import json
+import logging
 import os
 from typing import List, Optional
+
+class _NoAdjointNoneWarning(logging.Filter):
+    def filter(self, record):
+        return "Adjoint value is None" not in record.getMessage()
+
+logging.getLogger().addFilter(_NoAdjointNoneWarning())
 
 import numpy as np
 import matplotlib.pyplot as plt

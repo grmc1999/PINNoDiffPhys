@@ -581,18 +581,30 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
     def build_torch_state_step_operator(self):
         """State-step operator used by the trainer (step_op).
 
-        Runs the *iterative* Richardson map u_n -> u_{n+1} (starts from u_n,
-        so it carries the dependency the trainer's diff through observe/lift/
-        CNN needs) and returns raw Function dofs (V space), matching the
-        convention of FiredrakeTimeStepper.build_torch_state_step_operator
-        that the observe operator's from_torch expects. The inherited version
-        solved the exact elliptic residual, which does NOT depend on u_n and
-        produced a None adjoint (zero gradient).
+        Poisson is elliptic: the physics of one 'step' is the exact solve of
+        the steady problem (it does not evolve from the previous state). We
+        therefore keep the inherited FiredrakeTimeStepper implementation
+        (stable direct variational solve). firedrake-adjoint reports
+        "Adjoint value is None" for this operator because the solve does not
+        depend on the input control -- that is expected and harmless: the CNN
+        gradient now flows through the finite-difference residual loss
+        (torch-native), not through the state operator.
+
+        NOTE: the old m-step u-dependent Richardson map is NOT used here: at
+        the Laplace operator on CG1 its spectral radius exceeds 1 for any
+        practical relaxation and the iterates blow up (NaN training).
         """
         fd.adjoint.continue_annotation()
         u_n = fd.Function(self.V, name="u_n_control_poisson")
-        u_out = self.iterative_step(u_n)
-        red = ReducedFunctional(u_out, Control(u_n))
+        u_np1 = fd.Function(self.V, name="u_np1_state")
+        F = self.residual(u_np1, u_n)
+        fd.solve(
+            F == 0,
+            u_np1,
+            bcs=self.bcs,
+            solver_parameters=self.solver_parameters,
+        )
+        red = ReducedFunctional(u_np1, Control(u_n))
         fd.adjoint.stop_annotating()
         return fem_operator(red)
 
