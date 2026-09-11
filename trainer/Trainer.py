@@ -543,16 +543,19 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
         return self.f * v * fd.dx
 
     def iterative_step(self, u_n: fd.Function) -> fd.Function:
-        """Apply *m_iters* mass-preconditioned Richardson correction iterations.
+        """Apply *m_iters* mass-preconditioned Richardson iterations.
 
-        Each iteration: r = b - A u;  M du = r;  u <- u + omega du.
-        This is a differentiable operation through firedrake adjoint (each
-        linear solve is taped as a KSP solve node in the annotation tape).
+        Richardson  u <- u + omega * M^{-1}(b - A u)  is rewritten as the
+        equivalent linear system
+
+            M u_next = M u + omega (b - A u)   (= (u, v) + omega (f v - k grad u . grad v))
+
+        so successive iterates move through taped `assemble` + `solve` blocks
+        (never raw mutations or Function.assign), keeping the gradient flowing
+        through firedrake-adjoint back to the CNN correction. Boundary
+        conditions are enforced inside the `solve` (homogeneous Dirichlet).
         """
         v = fd.TestFunction(self.V)
-        u = fd.Function(self.V, name="poisson_iterate")
-        u.assign(u_n)
-
         M_mat = fd.assemble(fd.inner(fd.TrialFunction(self.V), v) * fd.dx)
 
         inner_sp = {
@@ -560,17 +563,20 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
             "pc_type": "jacobi",
         }
 
+        u_cur = u_n
         for _ in range(self.m_iters):
-            r = fd.assemble(
-                self._L_linear(v) - fd.action(self._a_bilinear(u, v), v)
+            R = (
+                fd.inner(u_cur, v) * fd.dx
+                + self.relaxation
+                * (self._L_linear(v)
+                   - fd.inner(self.k * fd.grad(u_cur), fd.grad(v)) * fd.dx)
             )
-            du = fd.Function(self.V)
-            fd.solve(M_mat, du, r, solver_parameters=inner_sp)
-            u.assign(u + self.relaxation * du)
-            for bc in self.bcs:
-                bc.apply(u)
+            rhs = fd.assemble(R)
+            u_next = fd.Function(self.V)
+            fd.solve(M_mat, u_next, rhs, bcs=self.bcs, solver_parameters=inner_sp)
+            u_cur = u_next
 
-        return u
+        return u_cur
 
     def build_torch_step_operator(self):
         fd.adjoint.continue_annotation()
