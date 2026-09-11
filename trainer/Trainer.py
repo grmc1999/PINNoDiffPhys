@@ -589,6 +589,8 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
         dependency through taped variational solves back to the CNN correction.
         """
         return self.build_torch_step_operator()
+
+    def build_torch_step_operator(self):
         fd.adjoint.continue_annotation()
         u_n = fd.Function(self.V, name="u_n_control_poisson")
         u_out = self.iterative_step(u_n)
