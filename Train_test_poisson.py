@@ -77,7 +77,7 @@ def build_trainer(mesh, point_grid, simulation_steps, st_model,
         optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
         simulation_steps=simulation_steps,
         dt=1.0,
-        loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0)) ** 2,
+        loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0, f=forcing)) ** 2,
     )
     return trainer
 

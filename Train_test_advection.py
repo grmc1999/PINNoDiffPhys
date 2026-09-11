@@ -11,7 +11,7 @@ import firedrake as fd
 
 from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
 from trainer.Trainer import ImplicitLinearAdvectionStepper, FiredrakePINNSBasedSOLTrainerCNN
-from DL_models.PINNS.Residual_losses import diffusion_loss
+from DL_models.PINNS.Residual_losses import advection_loss
 from experiment_utils import (set_seed, make_exp_dir, save_checkpoint, rollout_ground_truth_on_grid, gt_error_metrics, train_with_error_report)
 
 
@@ -113,7 +113,7 @@ def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
         optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
         simulation_steps=simulation_steps,
         dt=dt,
-        loss=lambda u, x: (diffusion_loss(u, x, K=1.0))**2,
+        loss=lambda u, x: (advection_loss(u, x, velocity=(1.0, 0.0))) ** 2,
     )
     return trainer
 

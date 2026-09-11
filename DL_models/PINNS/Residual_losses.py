@@ -15,15 +15,27 @@ def diffusion_loss(u, xt, K, dim=2):
     lap = torch.sum(d2u[..., :dim], axis=-1)  # d2u/dx2 + d2u/dy2
     return u_t - K * lap
 
-def poisson_residual_loss(u, xt, K=1.0, dim=2):
+def poisson_residual_loss(u, xt, K=1.0, f=0.0, dim=2):
     """
-    r = -K * Laplacian(u)
+    r = -K * Laplacian(u) - f
     Second-order autograd derivatives of u wrt spatial coords in xt.
     """
     du = x_grad(u, xt, 0, 1)
-    d2u = x_grad(du, xt, 0, 1)
+    d2u = x_grad(u, xt, 0, 2)
     lap = torch.sum(d2u[..., :dim], axis=-1)
-    return -K * lap
+    return -K * lap - f
+
+def advection_loss(u, xt, velocity=(1.0, 0.0), dim=2):
+    """
+    r = du/dt + v . grad(u) = 0  (divergence-free velocity assumed)
+
+    spatial channel indices are 0..dim-1, t sits at `dim`.
+    """
+    du = x_grad(u, xt, 0, 1)
+    u_t = du[..., dim]
+    vel = torch.as_tensor(list(velocity), dtype=u.dtype, device=u.device)
+    conv = torch.sum(vel[None, None, :] * du[..., :dim], axis=-1)
+    return u_t + conv
 
 def incompresibble_fluid_loss(up,xt,mu=1,rho=1):
     l=0

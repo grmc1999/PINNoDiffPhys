@@ -554,7 +554,6 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
         u.assign(u_n)
 
         M_mat = fd.assemble(fd.inner(fd.TrialFunction(self.V), v) * fd.dx)
-        du = fd.Function(self.V)
 
         inner_sp = {
             "ksp_type": "preonly",
@@ -565,8 +564,9 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
             r = fd.assemble(
                 self._L_linear(v) - fd.action(self._a_bilinear(u, v), v)
             )
+            du = fd.Function(self.V)
             fd.solve(M_mat, du, r, solver_parameters=inner_sp)
-            u.dat.data[:] += self.relaxation * du.dat.data[:]
+            u.assign(u + self.relaxation * du)
             for bc in self.bcs:
                 bc.apply(u)
 
