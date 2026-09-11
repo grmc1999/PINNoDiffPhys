@@ -117,7 +117,30 @@ def main():
     print("test D total_loss", float(tot.detach().cpu()))
     print("test D cnn grad nz per param:", nz, "n_trainable", sum(1 for p in cnn.parameters() if p.requires_grad))
     print("test D 'Adjoint value is None' count:", sum(1 for w in warns if "Adjoint value is None" in w))
+    with torch.no_grad():
+        pv = pred[0]
+        print("test D pred0 has_nan", bool(pv.isnan().any()), "max", float(pv.abs().max()), "mean", float(pv.mean()))
+    print("test D pred0 grad_fn:", type(pred[0].grad_fn).__name__ if pred[0].grad_fn else None)
     _root.removeHandler(hlog)
+
+    print("=== grad test E: stability scan of iterative_step over relaxation (h=1/10 CG1) ===")
+    import firedrake as _fd
+    with _fd.adjoint.pause_annotation():
+        mesh10 = _fd.UnitSquareMesh(10, 10)
+        g11 = np.stack(np.meshgrid(np.linspace(0, 1, 11), np.linspace(0, 1, 11)), axis=-1)
+        for rel in [1.0, 0.1, 0.01, 0.001]:
+            ste = T.IterativePoissonSolverStepper(
+                mesh=mesh10, m_iters=5, relaxation=rel, diffusivity=1.0,
+                forcing=1.0, bc_value=0.0, degree=1, point_evaluator=g11,
+            )
+            u_n = _fd.Function(ste.V)
+            try:
+                out = ste.iterative_step(u_n)
+                d = np.asarray(out.dat.data)
+                print("rel", rel, "max", float(d.max()), "min", float(d.min()),
+                      "linf", float(np.max(np.abs(d))), "any_nan", bool(np.isnan(d).any()))
+            except Exception as ex:
+                print("rel", rel, "ERR", type(ex).__name__, str(ex)[:120])
 
     print("DONE")
 
