@@ -23,9 +23,9 @@ EXP_LIST = [
 def ensure_config(rel_exp, epochs=20):
     """Regenerate the config json locally so it always carries the right epochs."""
     parts = rel_exp.replace("\\", "/").split("/")
-    # rel_exp like EXPS/<pde>_grid<N>_seed<S>
+    # rel_exp like EXPS/<pde>_grid<N>_seed<S> with optional trailing _<tag>
     import re
-    m = re.match(r"EXPS/(\w+)_grid(\d+)_seed(\d+)", rel_exp)
+    m = re.match(r"EXPS/(\w+)_grid(\d+)_seed(\d+)(?:_(\w+))?", rel_exp)
     if not m:
         raise ValueError(f"cannot parse exp dir: {rel_exp}")
     pde, grid, seed = m.group(1), int(m.group(2)), int(m.group(3))
@@ -33,10 +33,10 @@ def ensure_config(rel_exp, epochs=20):
     import submit_wave1 as sw
     exp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     os.chdir(exp_dir)
-    _, cfg = sw.create_experiment(
+    sw.create_experiment(
         "EXPS", pde, seed, grid, overrides={"n_epochs": epochs, "batch_size": 8}
     )
-    return rel_exp
+    return f"EXPS/{sw.exp_name(pde, seed, grid)}"
 
 
 def main():
@@ -51,9 +51,9 @@ def main():
     exp_list = [args.only] if args.only else EXP_LIST
     with ICA() as ica:
         for rel_exp in exp_list:
-            ensure_config(rel_exp, epochs=args.epochs)
+            canon_rel_exp = ensure_config(rel_exp, epochs=args.epochs)
             local_cfg = os.path.join(
-                "EXPS", rel_exp.replace("EXPS/", ""), "config.json"
+                "EXPS", canon_rel_exp.replace("EXPS/", ""), "config.json"
             )
             ica.run(f"mkdir -p {PATH_CODE}/{rel_exp}")
             ica.sftp_put(local_cfg, f"{PATH_CODE}/{rel_exp}/config.json")
