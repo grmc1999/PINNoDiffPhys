@@ -16,7 +16,7 @@ LOG = "/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_ICA_%s.log"
 def main():
     jobids = sys.argv[1:]
     to_file = "-file" in jobids
-    jobids = [j for j in jobids if j and j != "-file"] or ["601130", "601131", "601132"]
+    jobids = [j for j in jobids if j and j != "-file"] or ["601162", "601163"]
     buf = []
     with ICA() as ica:
         st, out, err = ica.run(
