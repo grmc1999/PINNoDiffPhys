@@ -545,35 +545,35 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
     def iterative_step(self, u_n: fd.Function) -> fd.Function:
         """Apply *m_iters* mass-preconditioned Richardson iterations.
 
-        Richardson  u <- u + omega * M^{-1}(b - A u)  is rewritten as the
-        equivalent linear system
+        The matrix-form update  M du = b - A u ; u <- u + omega du  is
+        rewritten as the equivalent *variational-form* solve
 
-            M u_next = M u + omega (b - A u)   (= (u, v) + omega (f v - k grad u . grad v))
+            (u_next, v) - (u, v) - omega ( f v - k grad u . grad v ) = 0
 
-        so successive iterates move through taped `assemble` + `solve` blocks
-        (never raw mutations or Function.assign), keeping the gradient flowing
-        through firedrake-adjoint back to the CNN correction. Boundary
-        conditions are enforced inside the `solve` (homogeneous Dirichlet).
+        which runs through the same taped NonLinearVariationalSolve blocks
+        that the diffusion/advection steppers use (the linear-matrix solve
+        path `solve(A, x, b)` is not annotated in this firedrake-adjoint and
+        yielded a None adjoint). No in-place mutation / Function.assign, so
+        every iterate carries a full tape back to u_n.
         """
         v = fd.TestFunction(self.V)
-        M_mat = fd.assemble(fd.inner(fd.TrialFunction(self.V), v) * fd.dx)
-
-        inner_sp = {
+        solver_parameters = {
+            "snes_type": "ksponly",
             "ksp_type": "preonly",
             "pc_type": "jacobi",
         }
 
         u_cur = u_n
         for _ in range(self.m_iters):
-            R = (
-                fd.inner(u_cur, v) * fd.dx
-                + self.relaxation
+            u_next = fd.Function(self.V)
+            F = (
+                fd.inner(u_next, v) * fd.dx
+                - fd.inner(u_cur, v) * fd.dx
+                - self.relaxation
                 * (self._L_linear(v)
                    - fd.inner(self.k * fd.grad(u_cur), fd.grad(v)) * fd.dx)
             )
-            rhs = fd.assemble(R)
-            u_next = fd.Function(self.V)
-            fd.solve(M_mat, u_next, rhs, bcs=self.bcs, solver_parameters=inner_sp)
+            fd.solve(F == 0, u_next, bcs=self.bcs, solver_parameters=solver_parameters)
             u_cur = u_next
 
         return u_cur
