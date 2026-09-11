@@ -6,6 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=12:00:00
+#SBATCH --exclude=cpunode-2-1
 #SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_ICA_%j.log
 
 # PINNoDiffPhys wave-1 single-config job (ICA cpu).
@@ -23,6 +24,12 @@ echo "Using container: $CONTAINER"
 
 CONFIG="$EXP_DIR/config.json"
 cd "$PATH_CODE"
+
+echo "--- clearing stale artifacts from prior runs (keeping config.json) ---"
+rm -rf "$EXP_DIR/plots"
+rm -f "$EXP_DIR/summary.json" "$EXP_DIR/trained_model.pt" "$EXP_DIR/checkpoint.pt" \
+      "$EXP_DIR/train_errors.json" "$EXP_DIR/train_errors.npy" "$EXP_DIR/train_losses.npy"
+
 PDE=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('pde','diffusion'))")
 SEED=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('seed',0))")
 GRID=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('train_grid_n',11))")

@@ -274,5 +274,5 @@ def train_with_error_report(trainer, u0, n_steps, point_grid,
     with open(os.path.join(exp_dir, "train_errors.json"), "w") as f:
         json.dump(train_errors, f, indent=2)
     plot_learning_process(losses, train_errors,
-                          os.path.join(plot_dir, "learning_summary.png"))
+                          os.path.join(plot_dir, "learning.png"))
     return losses, train_errors
