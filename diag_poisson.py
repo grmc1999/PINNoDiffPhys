@@ -58,7 +58,7 @@ def main():
         gB = torch.autograd.grad(yB.sum(), xr)[0]
         print("gradB norm", float(gB.norm()), "nz", int((gB != 0).sum()))
 
-    print("=== grad test C: diffusion-style direct variational solve ===")
+    print("=== grad test C: residual WITHOUT u_n dependence (root-cause demo) ===")
     class DirectPoisson(T.FiredrakeTimeStepper):
         def build_function_space(self, mesh):
             return fd.FunctionSpace(mesh, "CG", 1)
@@ -69,6 +69,7 @@ def main():
             return (fd.inner(fd.grad(u_np1), fd.grad(v)) * fd.dx
                     - fd.Constant(1.0) * v * fd.dx)
     dp = DirectPoisson(mesh=mesh, dt=1.0, point_evaluator=grid)
+    fd.adjoint.continue_annotation()
     opC = dp.build_torch_state_step_operator()
     xr = torch.rand(n_dofs, dtype=torch.float32).requires_grad_(True)
     yC = opC(xr)
@@ -77,6 +78,41 @@ def main():
         gC = torch.autograd.grad(yC.sum(), xr)[0]
         print("gradC norm", float(gC.norm()), "nz", int((gC != 0).sum()))
         print("gradC head", gC[:6].tolist())
+
+    print("=== grad test D: real trainer forward+backward ===")
+    import logging
+    warns = []
+    class _H(logging.Handler):
+        def emit(self, record):
+            warns.append(record.getMessage())
+    hlog = _H()
+    _root = logging.getLogger()
+    _root.setLevel(logging.WARNING)
+    _root.addHandler(hlog)
+
+    from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model as cnn_model
+    from DL_models.PINNS.Residual_losses import poisson_residual_loss
+    from trainer.Trainer import FiredrakePINNSBasedSOLTrainerCNN
+
+    cnn = cnn_model()
+    tr = FiredrakePINNSBasedSOLTrainerCNN(
+        physical_model=stepper,
+        statistical_model=cnn,
+        optimizer=torch.optim.Adam(cnn.parameters(), lr=1e-4),
+        simulation_steps=2,
+        dt=1.0,
+        loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0, f=1.0)) ** 2,
+    )
+    u0_f = fd.Function(stepper.V).interpolate(fd.Constant(0.0))
+    u0t = fd.ml.pytorch.to_torch(u0_f).float()
+    pred, _, sin_, _ = tr.forward_prediction_correction_from_state(u0t, 0.0)
+    tot = sum(torch.mean(tr.loss(p, i)) for p, i in zip(pred, sin_))
+    tot.backward()
+    nz = [int((p.grad is not None and p.grad.sum() != 0)) for p in cnn.parameters() if p.requires_grad]
+    print("test D total_loss", float(tot.detach().cpu()))
+    print("test D cnn grad nz per param:", nz, "n_trainable", sum(1 for p in cnn.parameters() if p.requires_grad))
+    print("test D 'Adjoint value is None' count:", sum(1 for w in warns if "Adjoint value is None" in w))
+    _root.removeHandler(hlog)
 
     print("DONE")
 
