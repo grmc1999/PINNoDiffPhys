@@ -95,6 +95,11 @@ def main():
     from trainer.Trainer import FiredrakePINNSBasedSOLTrainerCNN
 
     cnn = cnn_model()
+    for p in cnn.parameters():
+        if p.dim() >= 2:
+            torch.nn.init.kaiming_normal_(p)
+        else:
+            torch.nn.init.normal_(p)
     tr = FiredrakePINNSBasedSOLTrainerCNN(
         physical_model=stepper,
         statistical_model=cnn,
