@@ -123,24 +123,29 @@ def main():
     print("test D pred0 grad_fn:", type(pred[0].grad_fn).__name__ if pred[0].grad_fn else None)
     _root.removeHandler(hlog)
 
-    print("=== grad test E: stability scan of iterative_step over relaxation (h=1/10 CG1) ===")
-    import firedrake as _fd
-    with _fd.adjoint.pause_annotation():
-        mesh10 = _fd.UnitSquareMesh(10, 10)
+    print("=== grad test E: stability scan (m=5, 10x10 CG1) ===")
+    def iter_stats(pc, rel):
+        mesh10 = fd.UnitSquareMesh(10, 10)
         g11 = np.stack(np.meshgrid(np.linspace(0, 1, 11), np.linspace(0, 1, 11)), axis=-1)
-        for rel in [1.0, 0.1, 0.01, 0.001]:
-            ste = T.IterativePoissonSolverStepper(
-                mesh=mesh10, m_iters=5, relaxation=rel, diffusivity=1.0,
-                forcing=1.0, bc_value=0.0, degree=1, point_evaluator=g11,
-            )
-            u_n = _fd.Function(ste.V)
-            try:
-                out = ste.iterative_step(u_n)
-                d = np.asarray(out.dat.data)
-                print("rel", rel, "max", float(d.max()), "min", float(d.min()),
-                      "linf", float(np.max(np.abs(d))), "any_nan", bool(np.isnan(d).any()))
-            except Exception as ex:
-                print("rel", rel, "ERR", type(ex).__name__, str(ex)[:120])
+        ste = T.IterativePoissonSolverStepper(
+            mesh=mesh10, m_iters=5, relaxation=rel, diffusivity=1.0,
+            forcing=1.0, bc_value=0.0, degree=1, point_evaluator=g11,
+            solver_parameters={"snes_type": "ksponly", "ksp_type": "preonly", "pc_type": pc},
+        )
+        out = ste.iterative_step(fd.Function(ste.V))
+        d = np.asarray(out.dat.data)
+        return float(np.max(d)), float(np.min(d)), bool(np.isnan(d).any())
+    fd.adjoint.pause_annotation()
+    try:
+        for pc in ["lu", "jacobi"]:
+            for rel in [1.0, 0.5, 0.1]:
+                try:
+                    mx, mn, nan = iter_stats(pc, rel)
+                    print("pc", pc, "rel", rel, "max", mx, "min", mn, "nan", nan)
+                except Exception as ex:
+                    print("pc", pc, "rel", rel, "ERR", type(ex).__name__, str(ex)[:100])
+    finally:
+        fd.adjoint.continue_annotation()
 
     print("DONE")
 

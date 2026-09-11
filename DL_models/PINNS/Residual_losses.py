@@ -15,14 +15,38 @@ def diffusion_loss(u, xt, K, dim=2):
     lap = torch.sum(d2u[..., :dim], axis=-1)  # d2u/dx2 + d2u/dy2
     return u_t - K * lap
 
-def poisson_residual_loss(u, xt, K=1.0, f=0.0, dim=2):
+def poisson_residual_loss(u, xt, K=1.0, f=1.0, dim=2):
     """
-    r = -K * Laplacian(u) - f
-    Second-order autograd derivatives of u wrt spatial coords in xt.
+    r = -K * Laplacian(u) - f   (interior grid points)
+
+    Evaluated as a *finite-difference* Laplacian of the grid values u (not via
+    autograd wrt coordinates): u is [.., P, 1] field values on a uniform 2D
+    grid, xt carries [.., P, C] features whose first dim coordinates are x,y
+    (row-major from np.meshgrid(..., indexing='xy')). This keeps the residual
+    fully torch-differentiable into the CNN correction regardless of how u was
+    obtained.
     """
-    du = x_grad(u, xt, 0, 1)
-    d2u = x_grad(u, xt, 0, 2)
-    lap = torch.sum(d2u[..., :dim], axis=-1)
+    if u.ndim != 3:
+        u = u.reshape(u.shape[0], -1, 1)
+    B, P, _ = u.shape
+    xc = xt[..., 0]
+    yc = xt[..., 1]
+    xs = torch.sort(xc[0, :].unique())[0]
+    ys = torch.sort(yc[0, :].unique())[0]
+    H, W = int(len(ys)), int(len(xs))
+    if H * W != P:
+        H = int(round(P ** 0.5))
+        W = int(round(P / H))
+    if H < 3 or W < 3:
+        dxx = torch.zeros_like(u[..., 0])
+        return -K * dxx - f
+    hx = float((xs[1] - xs[0]))
+    hy = float((ys[1] - ys[0]))
+    u2 = u.reshape(B, H, W)
+    lap = (
+        (u2[..., 2:, 1:-1] - 2 * u2[..., 1:-1, 1:-1] + u2[..., :-2, 1:-1]) / (hx * hx)
+        + (u2[..., 1:-1, 2:] - 2 * u2[..., 1:-1, 1:-1] + u2[..., 1:-1, :-2]) / (hy * hy)
+    )
     return -K * lap - f
 
 def advection_loss(u, xt, velocity=(1.0, 0.0), dim=2):

@@ -557,10 +557,10 @@ class IterativePoissonSolverStepper(FiredrakeTimeStepper):
         every iterate carries a full tape back to u_n.
         """
         v = fd.TestFunction(self.V)
-        solver_parameters = {
+        solver_parameters = self.solver_parameters or {
             "snes_type": "ksponly",
             "ksp_type": "preonly",
-            "pc_type": "jacobi",
+            "pc_type": "lu",
         }
 
         u_cur = u_n
