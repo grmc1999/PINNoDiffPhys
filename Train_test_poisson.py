@@ -52,16 +52,24 @@ def compute_residual_curve(trainer, pred_states, input_states):
     val = trainer.loss(pred_states, input_states)
 
     if torch.is_tensor(val):
-        val_h = torch.mean(val, axis=-1).detach().cpu().numpy()
+        val_np = np.asarray(val.detach().cpu().numpy())
     else:
-        val_h = torch.mean(val, axis=-1).numpy()
+        val_np = np.asarray(val.numpy())
+    if val_np.ndim == 0:
+        val_np = val_np.reshape(1, 1)
+    if val_np.ndim == 1:
+        val_np = val_np.reshape(-1, 1)
+    # The residual may carry interior-grid dims (FD stencil): collapse all
+    # trailing spatial dims into a per-time-step point vector first.
+    spatial = val_np.reshape(val_np.shape[0], -1) if val_np.ndim > 2 else val_np
+    decay = spatial.mean(axis=-1)
 
     return {
-        "residual": val.detach().cpu().numpy(),
-        "residual_decay": val_h,
-        "residual_mean": float(np.mean(val_h)),
-        "residual_last": float(val_h[-1]),
-        "residual_max": float(np.max(val_h)),
+        "residual": val_np,
+        "residual_decay": decay,
+        "residual_mean": float(decay.mean()),
+        "residual_last": float(decay[-1]),
+        "residual_max": float(decay.max()),
     }
 
 
@@ -150,12 +158,17 @@ def plot_residual(report, output_path, title):
     res_arr = np.asarray(report["residual"])
     grid_shape = report["grid_shape"]
 
-    im1 = axes[1].imshow(res_arr[0].reshape(grid_shape[:2]),
+    def _as_2d(arr):
+        if arr.ndim == 2:
+            return arr
+        return arr.reshape(grid_shape[:2])
+
+    im1 = axes[1].imshow(_as_2d(res_arr[0]),
                           origin="lower", extent=(0, 1, 0, 1))
     axes[1].set_title("Residual spatial map, iter 0")
     plt.colorbar(im1, ax=axes[1], fraction=0.046)
 
-    im2 = axes[2].imshow(res_arr[-1].reshape(grid_shape[:2]),
+    im2 = axes[2].imshow(_as_2d(res_arr[-1]),
                           origin="lower", extent=(0, 1, 0, 1))
     axes[2].set_title("Residual spatial map, last iter")
     plt.colorbar(im2, ax=axes[2], fraction=0.046)
@@ -364,11 +377,11 @@ if __name__ == "__main__":
     posterior_residual_curves = {
         "spatial interpolation": {
             "iterations": spatial_report["iterations"],
-            "residual": spatial_report["residual"],
+            "residual": spatial_report["residual_decay"],
         },
         "budget shift": {
             "iterations": budget_report["iterations"],
-            "residual": budget_report["residual"],
+            "residual": budget_report["residual_decay"],
         },
     }
     plot_residual_curves(posterior_residual_curves,
