@@ -213,13 +213,18 @@ def compute_training_error(trainer, u0, n_steps, point_grid):
 
 
 def train_with_error_report(trainer, u0, n_steps, point_grid,
-                            n_epochs, batch_size, save_every, exp_dir):
+                            n_epochs, batch_size, save_every, exp_dir,
+                            checkpoint_callback=None):
     """Train with a ground-truth training-error report at each checkpoint.
 
     Runs the same checkpoint loop as the individual train scripts but, in
     addition to the residual ``loss``, computes the corrected-model rollout
     error against ground truth after each checkpoint, records it, and emits
     per-checkpoint images for the learning process and solution quality.
+
+    ``checkpoint_callback(trainer, epoch, losses, train_errors)`` is invoked
+    after each checkpoint's images so callers can regenerate posterior plots
+    with the just-trained model state.
 
     Returns
     -------
@@ -269,6 +274,8 @@ def train_with_error_report(trainer, u0, n_steps, point_grid,
               f"rel_rmse={metrics['rel_rmse_mean']:.4f}  "
               f"linf={metrics['linf_max']:.4f}")
         _emit_images(start + n)
+        if checkpoint_callback is not None:
+            checkpoint_callback(trainer, start + n, losses, train_errors)
 
     np.save(os.path.join(exp_dir, "train_errors.npy"), train_errors)
     with open(os.path.join(exp_dir, "train_errors.json"), "w") as f:

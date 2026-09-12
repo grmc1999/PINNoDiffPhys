@@ -262,6 +262,94 @@ def run_budget_shift_experiment(mesh, trained_model, u0, args):
 
 
 # ============================================================
+# Posterior refresh: regenerate all posterior plots + summary.json
+# with the current model state (called after every checkpoint).
+# ============================================================
+
+def refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
+                      losses, train_errors):
+    spatial_report = run_spatial_interpolation_experiment(
+        mesh=mesh, trained_model=st_model, u0=u0, args=args)
+    budget_report = run_budget_shift_experiment(
+        mesh=mesh, trained_model=st_model, u0=u0, args=args)
+
+    plot_residual(spatial_report,
+                  os.path.join(plot_dir, "spatial_interpolation.png"),
+                  title="Spatial interpolation")
+    plot_residual(budget_report,
+                  os.path.join(plot_dir, "budget_shift.png"),
+                  title="Iteration budget shift")
+
+    posterior_residual_curves = {
+        "spatial interpolation": {
+            "iterations": spatial_report["iterations"],
+            "residual": spatial_report["residual_decay"],
+        },
+        "budget shift": {
+            "iterations": budget_report["iterations"],
+            "residual": budget_report["residual_decay"],
+        },
+    }
+    plot_residual_curves(posterior_residual_curves,
+                         os.path.join(plot_dir,
+                                      "posterior_test_residual_curves.png"))
+
+    posterior_error_curves = {
+        "spatial interpolation": {
+            "iterations": spatial_report["iterations"],
+            "rel_rmse": spatial_report["gt_error"]["rel_rmse_per_step"],
+        },
+        "budget shift": {
+            "iterations": budget_report["iterations"],
+            "rel_rmse": budget_report["gt_error"]["rel_rmse_per_step"],
+        },
+    }
+    plot_error_curves(posterior_error_curves,
+                      os.path.join(plot_dir,
+                                   "posterior_test_error_curves.png"))
+
+    if len(losses) > 0:
+        plot_training_curve(losses, os.path.join(plot_dir, "training_curve.png"))
+
+    summary = {
+        "training": {
+            "epochs": args.n_epochs,
+            "batch_size": args.batch_size,
+            "m_iters_train": args.m_iters,
+            "num_rollout_train": args.num_rollout,
+            "train_grid_n": args.train_grid_n,
+            "final_loss": float(losses[-1]) if len(losses) > 0 else None,
+            "train_errors": train_errors,
+        },
+        "spatial_interpolation": {
+            "grid_test_n": args.spatial_test_n,
+            "residual_mean": spatial_report["residual_mean"],
+            "residual_last": spatial_report["residual_last"],
+            "residual_max": spatial_report["residual_max"],
+            "gt_rel_rmse_mean": spatial_report["gt_error"]["rel_rmse_mean"],
+            "gt_rel_rmse_last": spatial_report["gt_error"]["rel_rmse_last"],
+            "gt_linf_max": spatial_report["gt_error"]["linf_max"],
+        },
+        "budget_shift": {
+            "m_train": budget_report["m_train"],
+            "m_test": budget_report["m_test"],
+            "residual_mean": budget_report["residual_mean"],
+            "residual_last": budget_report["residual_last"],
+            "residual_max": budget_report["residual_max"],
+            "gt_rel_rmse_mean": budget_report["gt_error"]["rel_rmse_mean"],
+            "gt_rel_rmse_last": budget_report["gt_error"]["rel_rmse_last"],
+            "gt_linf_max": budget_report["gt_error"]["linf_max"],
+        },
+    }
+    save_report_json(summary, os.path.join(exp_dir, "summary.json"))
+    epoch = train_errors[-1]["epoch"] if train_errors else 0
+    print(f"  [posterior] refreshed at epoch {epoch}"
+          f"  rel_rmse_mean={spatial_report['gt_error']['rel_rmse_mean']:.4f}"
+          f"  resid_mean={spatial_report['residual_mean']:.3f}")
+    return summary
+
+
+# ============================================================
 # Main
 # ============================================================
 
@@ -334,6 +422,11 @@ if __name__ == "__main__":
     losses = []
     train_errors = []
     train_error_steps = 3
+
+    def _refresh_cb(trainer, epoch, losses, train_errors):
+        refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
+                          losses, train_errors)
+
     losses, train_errors = train_with_error_report(
         trainer=train_trainer,
         u0=u0,
@@ -343,97 +436,17 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         save_every=args.save_every,
         exp_dir=exp_dir,
+        checkpoint_callback=_refresh_cb,
     )
 
     np.save(os.path.join(exp_dir, "train_losses.npy"), np.asarray(losses))
     torch.save(st_model.state_dict(), os.path.join(exp_dir, "trained_model.pt"))
 
-    if len(losses) > 0:
-        plot_training_curve(losses, os.path.join(plot_dir, "training_curve.png"))
+    if args.n_epochs % args.save_every != 0:
+        refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
+                          losses, train_errors)
 
-    # --------------------------------------------------------
-    # 1. Spatial interpolation
-    # --------------------------------------------------------
-    spatial_report = run_spatial_interpolation_experiment(
-        mesh=mesh, trained_model=st_model, u0=u0, args=args,
-    )
-    plot_residual(spatial_report,
-                  os.path.join(plot_dir, "spatial_interpolation.png"),
-                  title="Spatial interpolation")
-
-    # --------------------------------------------------------
-    # 2. Iteration budget shift
-    # --------------------------------------------------------
-    budget_report = run_budget_shift_experiment(
-        mesh=mesh, trained_model=st_model, u0=u0, args=args,
-    )
-    plot_residual(budget_report,
-                  os.path.join(plot_dir, "budget_shift.png"),
-                  title="Iteration budget shift")
-
-    # --------------------------------------------------------
-    # Combined residual + error curves
-    # --------------------------------------------------------
-    posterior_residual_curves = {
-        "spatial interpolation": {
-            "iterations": spatial_report["iterations"],
-            "residual": spatial_report["residual_decay"],
-        },
-        "budget shift": {
-            "iterations": budget_report["iterations"],
-            "residual": budget_report["residual_decay"],
-        },
-    }
-    plot_residual_curves(posterior_residual_curves,
-                         os.path.join(plot_dir, "posterior_test_residual_curves.png"))
-
-    posterior_error_curves = {
-        "spatial interpolation": {
-            "iterations": spatial_report["iterations"],
-            "rel_rmse": spatial_report["gt_error"]["rel_rmse_per_step"],
-        },
-        "budget shift": {
-            "iterations": budget_report["iterations"],
-            "rel_rmse": budget_report["gt_error"]["rel_rmse_per_step"],
-        },
-    }
-    plot_error_curves(posterior_error_curves,
-                      os.path.join(plot_dir, "posterior_test_error_curves.png"))
-
-    # --------------------------------------------------------
-    # Summary
-    # --------------------------------------------------------
-    summary = {
-        "training": {
-            "epochs": args.n_epochs,
-            "batch_size": args.batch_size,
-            "m_iters_train": args.m_iters,
-            "num_rollout_train": args.num_rollout,
-            "train_grid_n": args.train_grid_n,
-            "final_loss": float(losses[-1]) if len(losses) > 0 else None,
-            "train_errors": train_errors,
-        },
-        "spatial_interpolation": {
-            "grid_test_n": args.spatial_test_n,
-            "residual_mean": spatial_report["residual_mean"],
-            "residual_last": spatial_report["residual_last"],
-            "residual_max": spatial_report["residual_max"],
-            "gt_rel_rmse_mean": spatial_report["gt_error"]["rel_rmse_mean"],
-            "gt_rel_rmse_last": spatial_report["gt_error"]["rel_rmse_last"],
-            "gt_linf_max": spatial_report["gt_error"]["linf_max"],
-        },
-        "budget_shift": {
-            "m_train": budget_report["m_train"],
-            "m_test": budget_report["m_test"],
-            "residual_mean": budget_report["residual_mean"],
-            "residual_last": budget_report["residual_last"],
-            "residual_max": budget_report["residual_max"],
-            "gt_rel_rmse_mean": budget_report["gt_error"]["rel_rmse_mean"],
-            "gt_rel_rmse_last": budget_report["gt_error"]["rel_rmse_last"],
-            "gt_linf_max": budget_report["gt_error"]["linf_max"],
-        },
-    }
-
-    save_report_json(summary, os.path.join(exp_dir, "summary.json"))
+    with open(os.path.join(exp_dir, "summary.json")) as f:
+        summary = json.load(f)
     print("\n=== Summary ===")
     print(json.dumps(summary, indent=2))
