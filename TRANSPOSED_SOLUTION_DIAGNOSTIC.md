@@ -1,6 +1,6 @@
 # Diagnostic Plan: Transposed Reconstruction in Advection `solution_epoch_*.png`
 
-**Status:** Root cause CONFIRMED + fix applied (commit `xxx`) · **Owner:** Guillermo · **Tracker:** `PLAN.md`
+**Status:** Root cause CONFIRMED, fixed (commit `0f93fb7`), **validated by job 602183: pred==gt** · **Owner:** Guillermo · **Tracker:** `PLAN.md`
 
 ## 0. Verdict
 
@@ -136,12 +136,16 @@ Use an existing advection checkpoint (e.g. from canonical runs 601677–601685, 
 The einops collapses at `Trainer.py:701/729/815/822` and expand at `:818` were switched to
 the probe-verified point-order forms. Coarse expand `:700` verified unchanged.
 
-### 4.2 Regression validation
-- [ ] Rerun **one** advection seed (grid11 seed0) briefly with the fixed code; confirm
-  `pred == gt` (not `gt.T`) via `diag_repro.py`-style comparison and image orientation.
-- [ ] Confirm diffusion/poisson images/metrics still fine (guard passes).
-- [ ] Existing checkpoints are stale (CNN learned in transposed frame) → retrain required
-  for paper-quality results.
+### 4.2 Regression validation — PASSED (602182 → 602183, 2026-09-15)
+Validation: 3-epoch advection run `EXPS/advection_grid11_seed0_axfix` (fixed code),
+then `diag_repro.py` on its checkpoint:
+- **FINE GRID**: `pred==gt` at every step (rel_rmse 0.092→0.249 vs gt.T 0.150→0.590).
+- **TRAIN GRID**: `pred==gt` at every step (rel_rmse 0.084→0.432 vs gt.T 0.229→0.815).
+- Overrun all 10 steps, corner peek confirms alignment to `gt`, not `gt.T`.
+- Verdict: fix confirmed; orientation now correct on the `solution_epoch_*.png` path.
+- Existing pre-fix checkpoints remain invalid (CNN trained in transposed frame) →
+  retraining required for paper results (in-flight/old reruns cancelled; reschedule advection
+  grid11/16/21 seeds under fixed code as decided).
 
 ## 5. Step 3 — Keep advection reruns monitored (independent)
 
