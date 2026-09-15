@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --job-name=PINNo_diagT
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=00:30:00
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_diagT_%j.log
+
+# Probe 1d: to_torch vs data_ro ordering (feature_builder layout).
+. /share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys/bash_routines/set_env.sh ICA
+cd "$PATH_CODE"
+
+export SINGULARITY_BIND="$PATH_CODE:/code,$(pwd):/workspace"
+CONTAINER="$PATH_ENV/fem_pytorch/envs/firedrake.sif"
+DIAG_DIR="$PATH_CODE/diag"
+mkdir -p "$DIAG_DIR"
+LOG="$DIAG_DIR/$SLURM_JOB_ID.log"
+
+exec > >(tee -a "$LOG") 2>&1
+echo "=== DIAG TORCH START $(date) ==="
+echo "SLURM_JOB_ID=$SLURM_JOB_ID"
+singularity exec "$CONTAINER" python3 /code/diag_torch.py
+echo "=== DIAG TORCH COMPLETE $(date) ==="
+echo "Log saved to $LOG"

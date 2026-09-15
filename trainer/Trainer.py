@@ -698,7 +698,7 @@ class FiredrakePINNSBasedSOLTrainer:
         #features = rearrange(self.feature_builder(state_tensor, t),"c h w-> 1 (h w) c").requires_grad_(True)
         correction = rearrange(self.st_model(
             rearrange(features,"1 (h w) c -> c h w", h = self.physical_model.evaluation_shape[0] ,w = self.physical_model.evaluation_shape[1])
-            ), " c h w -> 1 (h w) c") # [u x t] 
+            ), "c h w -> 1 (w h) c") # [u x t] 
         corrected = features[:,:,-1:] + correction # [c h w]
         return corrected, correction, features
 
@@ -726,7 +726,7 @@ class FiredrakePINNSBasedSOLTrainer:
             phys_next_grid = self.observe_op(phys_next_v)
             features = rearrange(
                 self.feature_builder(phys_next_grid, current_t),
-                "c h w-> 1 (h w) c"
+                "c h w -> 1 (w h) c"
                 ).requires_grad_(True)
             corrected_grid, corr_grid, features = self.correct(features) # [b p v], ?, [b p v]
             # corrected to embeded feature
@@ -812,14 +812,14 @@ class FiredrakePINNSBasedSOLTrainer:
                         fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_))).requires_grad_(True), (t0 + self.physical_model.dt.values()*(i+1)), spatial_sample, P0DG_
                             ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
-            uncorrected_sol = rearrange(uncorrected_sol_h, "V x y t -> t (x y) V")
+            uncorrected_sol = rearrange(uncorrected_sol_h, "V x y t -> t (y x) V")
 
             states_pred = list(u_sol + \
-                               rearrange(self.st_model(rearrange(u_sol,"(x y) V -> V x y",
+                               rearrange(self.st_model(rearrange(u_sol,"(y x) V -> V x y",
                                                                x = spatial_sample.shape[0],
                                                                y = spatial_sample.shape[1],
                                                                V = (self.physical_model.V.mesh().geometric_dimension() + 1 + 1) # TODO: extend to multiple output space
-                                                               ))," V x y -> (x y) V") for u_sol in uncorrected_sol)
+                                                               )),"V x y -> (y x) V") for u_sol in uncorrected_sol)
             
             states_pred = torch.stack(states_pred,axis = 0) # [t p V]
                 

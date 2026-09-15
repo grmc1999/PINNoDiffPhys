@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH --job-name=PINNo_diag
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=00:30:00
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_diag_%j.log
+
+# Probe 1a + 1b for the advection transposed-solution investigation.
+# Runs inside the container on a compute node (singularity only available there).
+# Output goes to $PATH_CODE/diag/$SLURM_JOB_ID.log as well as the SLURM log.
+
+. /share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys/bash_routines/set_env.sh ICA
+cd "$PATH_CODE"
+
+export SINGULARITY_BIND="$PATH_CODE:/code,$(pwd):/workspace"
+CONTAINER="$PATH_ENV/fem_pytorch/envs/firedrake.sif"
+DIAG_DIR="$PATH_CODE/diag"
+mkdir -p "$DIAG_DIR"
+LOG="$DIAG_DIR/$SLURM_JOB_ID.log"
+
+exec > >(tee -a "$LOG") 2>&1
+echo "=== DIAG START $(date) ==="
+echo "SLURM_JOB_ID=$SLURM_JOB_ID"
+echo "CONTAINER=$CONTAINER"
+echo "SINGULARITY_BIND=$SINGULARITY_BIND"
+
+echo ""
+echo "### PROBE 1a: X-coordinate VOM layout check ###"
+singularity exec "$CONTAINER" python3 /code/diag_layout.py
+echo ""
+echo "### PROBE 1a done $(date) ###"
+
+echo ""
+echo "### PROBE 1b: predict_rollout reproduction from checkpoint ###"
+export EXP_DIR=/code/EXPS/advection_grid16_seed0
+export N_STEPS=10
+singularity exec "$CONTAINER" python3 /code/diag_repro.py
+echo ""
+echo "### PROBE 1b done $(date) ###"
+
+echo ""
+echo "=== DIAG COMPLETE $(date) ==="
+echo "Log saved to $LOG"

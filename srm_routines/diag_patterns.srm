@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --job-name=PINNo_diag
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=00:30:00
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_diag_%j.log
+
+# Probe 1g: pick the correct einops collapse strings for the transposed-solution fix.
+# Output goes to $PATH_CODE/diag/$SLURM_JOB_ID.log as well as the SLURM log.
+
+. /share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys/bash_routines/set_env.sh ICA
+cd "$PATH_CODE"
+
+export SINGULARITY_BIND="$PATH_CODE:/code,$(pwd):/workspace"
+CONTAINER="$PATH_ENV/fem_pytorch/envs/firedrake.sif"
+DIAG_DIR="$PATH_CODE/diag"
+mkdir -p "$DIAG_DIR"
+LOG="$DIAG_DIR/$SLURM_JOB_ID.log"
+
+exec > >(tee -a "$LOG") 2>&1
+echo "=== DIAG START $(date) ==="
+echo "SLURM_JOB_ID=$SLURM_JOB_ID"
+echo "CONTAINER=$CONTAINER"
+
+echo ""
+echo "### PROBE 1g: einops collapse-string selection ###"
+singularity exec "$CONTAINER" python3 /code/diag_patterns.py
+echo ""
+echo "### PROBE 1g done $(date) ###"
+
+echo ""
+echo "=== DIAG COMPLETE $(date) ==="
+echo "Log saved to $LOG"
