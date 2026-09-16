@@ -75,6 +75,16 @@ def main():
 
     with ICA() as ica:
         if cmd == "status" or cmd == "next":
+            # explicit group override (next <idx>) bypasses progress checks
+            if len(sys.argv) > 2 and sys.argv[1] == "next" and sys.argv[2].isdigit():
+                g = int(sys.argv[2])
+                names = GROUPS[g]
+                print(f"  (force) switching to group {g + 1}: {names}")
+                jids = submit_group(ica, g, names)
+                save({"group": g, "jobids": jids, "phase": "wait"})
+                print(f"  state saved -> {STATE}")
+                return
+
             names = GROUPS[g] if g < len(GROUPS) else None
             if names is None:
                 print("All 9 groups already processed.")
@@ -102,12 +112,6 @@ def main():
                     print("ALL 9 GROUPS DONE")
                     return
                 names = GROUPS[g]
-
-            # force index override
-            if len(sys.argv) > 2 and sys.argv[1] == "next" and sys.argv[2].isdigit():
-                g = int(sys.argv[2])
-                names = GROUPS[g]
-                print(f"  (force) switching to group {g + 1}: {names}")
 
             print(f"  submitting group {g + 1}/{len(GROUPS)}:")
             jids = submit_group(ica, g, names)
