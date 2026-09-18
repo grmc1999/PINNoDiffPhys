@@ -37,6 +37,11 @@ BATCH=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('batc
 ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('num_rollout',5))")
 M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
 SAVE_EVERY=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('save_every',10))")
+SKIP_POSTERIOR=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('skip_posterior',0))")
+
+if [ "$SKIP_POSTERIOR" = "1" ]; then
+    export PINNO_SKIP_POSTERIOR=1
+fi
 
 SCRIPT="Train_test_${PDE}.py"
 ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --save_every $SAVE_EVERY --exp_name $(basename $EXP_DIR) --base_output_dir /code/EXPS"

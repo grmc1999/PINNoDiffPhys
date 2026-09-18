@@ -530,6 +530,8 @@ if __name__ == "__main__":
     train_errors = []
     train_error_steps = 3
     def _refresh_cb(trainer, epoch, losses, train_errors):
+        if os.environ.get("PINNO_SKIP_POSTERIOR") == "1":
+            return
         refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
                           u0, args, exp_dir, plot_dir, losses, train_errors)
 
@@ -557,7 +559,7 @@ if __name__ == "__main__":
             os.path.join(plot_dir, "training_curve.png"),
         )
 
-    if args.n_epochs % args.save_every != 0:
+    if args.n_epochs % args.save_every != 0 and os.environ.get("PINNO_SKIP_POSTERIOR") != "1":
         refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
                           u0, args, exp_dir, plot_dir, losses, train_errors)
 

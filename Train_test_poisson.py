@@ -432,6 +432,8 @@ if __name__ == "__main__":
     train_error_steps = 3
 
     def _refresh_cb(trainer, epoch, losses, train_errors):
+        if os.environ.get("PINNO_SKIP_POSTERIOR") == "1":
+            return
         refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
                           losses, train_errors)
 
@@ -450,7 +452,7 @@ if __name__ == "__main__":
     np.save(os.path.join(exp_dir, "train_losses.npy"), np.asarray(losses))
     torch.save(st_model.state_dict(), os.path.join(exp_dir, "trained_model.pt"))
 
-    if args.n_epochs % args.save_every != 0:
+    if args.n_epochs % args.save_every != 0 and os.environ.get("PINNO_SKIP_POSTERIOR") != "1":
         refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
                           losses, train_errors)
 
