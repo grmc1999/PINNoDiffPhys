@@ -751,30 +751,34 @@ class FiredrakePINNSBasedSOLTrainer:
     def train(self, epochs: int, batch_size: int = 8):
         losses = []
 
-        for _ in tqdm(range(epochs)):
-            batch_pred = []
-            batch_in = []
+        fd.adjoint.stop_annotating()
+        try:
+            for _ in tqdm(range(epochs)):
+                batch_pred = []
+                batch_in = []
 
-            for b in range(batch_size):
-                idx = torch.randint(low=0, high=len(self.init_states_gt), size=(1,)).item()
-                u0_fd = self.init_states_gt[idx]
-                t0 = self.T[idx]
+                for b in range(batch_size):
+                    idx = torch.randint(low=0, high=len(self.init_states_gt), size=(1,)).item()
+                    u0_fd = self.init_states_gt[idx]
+                    t0 = self.T[idx]
 
-                u0_torch = firedrake_field_to_torch(u0_fd, batched=True).float()
-                states_pred, _, states_in, _ = self.forward_prediction_correction_from_state(u0_torch, t0)
+                    u0_torch = firedrake_field_to_torch(u0_fd, batched=True).float()
+                    states_pred, _, states_in, _ = self.forward_prediction_correction_from_state(u0_torch, t0)
 
-                batch_pred.extend(states_pred)
-                batch_in.extend(states_in)
+                    batch_pred.extend(states_pred)
+                    batch_in.extend(states_in)
 
-            total_loss = 0.0
-            for u_pred, u_in in zip(batch_pred, batch_in):
-                total_loss = total_loss + torch.mean(self.loss(u_pred, u_in))
+                total_loss = 0.0
+                for u_pred, u_in in zip(batch_pred, batch_in):
+                    total_loss = total_loss + torch.mean(self.loss(u_pred, u_in))
 
-            self.optimizer.zero_grad()
-            total_loss.backward()
-            self.optimizer.step()
+                self.optimizer.zero_grad()
+                total_loss.backward()
+                self.optimizer.step()
 
-            losses.append(float(total_loss.detach().cpu()))
+                losses.append(float(total_loss.detach().cpu()))
+        finally:
+            fd.adjoint.continue_annotation()
 
         return losses
     
@@ -847,11 +851,15 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
   def feature_builder(self,u: torch.Tensor,t: float):
     u = u.reshape(self.physical_model.evaluation_shape[:-1]+(1,))
 
-    V = fd.VectorFunctionSpace(self.physical_model.P0DG.mesh(), "DG", 0)
-    X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(self.physical_model.mesh))) # [eval_points dim]
-    X = X.reshape(self.physical_model.evaluation_shape) # [p_dims x y]
+    X = getattr(self, "_coord_X", None)
+    if X is None:
+        V = fd.VectorFunctionSpace(self.physical_model.P0DG.mesh(), "DG", 0)
+        X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(self.physical_model.mesh))) # [eval_points dim]
+        X = X.reshape(self.physical_model.evaluation_shape) # [p_dims x y]
+        X = X.clone().detach().float()
+        self._coord_X = X
     t = torch.tile(torch.tensor(t),(self.physical_model.evaluation_shape[:2])+(1,))
-    return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
+    return torch.concat((X.to(device=u.device, dtype=u.dtype), t, u),axis=-1).transpose(0,-1).float()
   
   def feature_builder_finer(self,u: torch.Tensor, t: float, eval_points: np.ndarray, fs: fd.FunctionSpace):
     u = u.reshape(eval_points.shape[:-1]+(1,))
