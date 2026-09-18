@@ -36,9 +36,10 @@ EPOCHS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('n_e
 BATCH=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('batch_size',8))")
 ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('num_rollout',5))")
 M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
+SAVE_EVERY=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('save_every',10))")
 
 SCRIPT="Train_test_${PDE}.py"
-ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --exp_name $(basename $EXP_DIR) --base_output_dir /code/EXPS"
+ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --save_every $SAVE_EVERY --exp_name $(basename $EXP_DIR) --base_output_dir /code/EXPS"
 
 if [ "$PDE" = "diffusion" ]; then
     DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.1))")

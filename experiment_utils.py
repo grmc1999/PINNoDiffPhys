@@ -273,6 +273,11 @@ def train_with_error_report(trainer, u0, n_steps, point_grid,
               f"loss={chunk_losses[-1]:.6f}  "
               f"rel_rmse={metrics['rel_rmse_mean']:.4f}  "
               f"linf={metrics['linf_max']:.4f}")
+        try:
+            from pyadjoint import get_working_tape
+            print(f"  [tape] pyadjoint blocks={len(get_working_tape().get_blocks())}")
+        except Exception:
+            pass
         _emit_images(start + n)
         if checkpoint_callback is not None:
             checkpoint_callback(trainer, start + n, losses, train_errors)
