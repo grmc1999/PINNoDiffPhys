@@ -758,33 +758,30 @@ class FiredrakePINNSBasedSOLTrainer:
         losses = []
 
         fd.adjoint.stop_annotating()
-        try:
-            for _ in tqdm(range(epochs)):
-                batch_pred = []
-                batch_in = []
+        for _ in tqdm(range(epochs)):
+            batch_pred = []
+            batch_in = []
 
-                for b in range(batch_size):
-                    idx = torch.randint(low=0, high=len(self.init_states_gt), size=(1,)).item()
-                    u0_fd = self.init_states_gt[idx]
-                    t0 = self.T[idx]
+            for b in range(batch_size):
+                idx = torch.randint(low=0, high=len(self.init_states_gt), size=(1,)).item()
+                u0_fd = self.init_states_gt[idx]
+                t0 = self.T[idx]
 
-                    u0_torch = firedrake_field_to_torch(u0_fd, batched=True).float()
-                    states_pred, _, states_in, _ = self.forward_prediction_correction_from_state(u0_torch, t0)
+                u0_torch = firedrake_field_to_torch(u0_fd, batched=True).float()
+                states_pred, _, states_in, _ = self.forward_prediction_correction_from_state(u0_torch, t0)
 
-                    batch_pred.extend(states_pred)
-                    batch_in.extend(states_in)
+                batch_pred.extend(states_pred)
+                batch_in.extend(states_in)
 
-                total_loss = 0.0
-                for u_pred, u_in in zip(batch_pred, batch_in):
-                    total_loss = total_loss + torch.mean(self.loss(u_pred, u_in))
+            total_loss = 0.0
+            for u_pred, u_in in zip(batch_pred, batch_in):
+                total_loss = total_loss + torch.mean(self.loss(u_pred, u_in))
 
-                self.optimizer.zero_grad()
-                total_loss.backward()
-                self.optimizer.step()
+            self.optimizer.zero_grad()
+            total_loss.backward()
+            self.optimizer.step()
 
-                losses.append(float(total_loss.detach().cpu()))
-        finally:
-            fd.adjoint.continue_annotation()
+            losses.append(float(total_loss.detach().cpu()))
 
         return losses
     

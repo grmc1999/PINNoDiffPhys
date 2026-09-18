@@ -199,17 +199,14 @@ def save_report_json(report, output_path):
 # Experiments
 # ============================================================
 
-def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
-    """Same solver config, but denser spatial point sampling."""
-    fine_grid = make_point_grid(args.spatial_test_n)
-    grid = make_point_grid(args.train_grid_n)
-    n_steps = args.num_rollout
+def run_spatial_interpolation_experiment(test_trainer, u0, args):
+    """Same solver config, but denser spatial point sampling.
 
-    test_trainer = build_trainer(
-        mesh=mesh, point_grid=grid,
-        simulation_steps=n_steps, st_model=trained_model, lr=0.0,
-        m_iters=args.m_iters,
-    )
+    *test_trainer* is prebuilt once outside the training loop and reused at
+    every posterior refresh so pyadjoint blocks are recorded only once.
+    """
+    fine_grid = make_point_grid(args.spatial_test_n)
+    n_steps = args.num_rollout
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = \
         test_trainer.predict_rollout(u0, t0=0.0, n_steps=n_steps,
@@ -229,17 +226,11 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     return report
 
 
-def run_budget_shift_experiment(mesh, trained_model, u0, args):
+def run_budget_shift_experiment(test_trainer, u0, args):
     """Fewer Richardson iterations (coarser solver) at test time."""
     grid = make_point_grid(args.train_grid_n)
     n_steps = args.num_rollout
     m_test = max(1, args.m_iters // args.budget_refinement)
-
-    test_trainer = build_trainer(
-        mesh=mesh, point_grid=grid,
-        simulation_steps=n_steps, st_model=trained_model, lr=0.0,
-        m_iters=m_test,
-    )
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = \
         test_trainer.predict_rollout(u0, t0=0.0, n_steps=n_steps,
@@ -266,12 +257,12 @@ def run_budget_shift_experiment(mesh, trained_model, u0, args):
 # with the current model state (called after every checkpoint).
 # ============================================================
 
-def refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
+def refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
                       losses, train_errors):
     spatial_report = run_spatial_interpolation_experiment(
-        mesh=mesh, trained_model=st_model, u0=u0, args=args)
+        post_spatial, u0=u0, args=args)
     budget_report = run_budget_shift_experiment(
-        mesh=mesh, trained_model=st_model, u0=u0, args=args)
+        post_budget, u0=u0, args=args)
 
     plot_residual(spatial_report,
                   os.path.join(plot_dir, "spatial_interpolation.png"),
@@ -416,6 +407,23 @@ if __name__ == "__main__":
         forcing=args.forcing,
     )
 
+    # Posterior test trainers: built ONCE (annotation ON, blocks recorded a
+    # single time) and reused at every checkpoint so the pyadjoint tape stays
+    # constant instead of growing per checkpoint.
+    post_spatial = build_trainer(
+        mesh=mesh, point_grid=train_grid,
+        simulation_steps=args.num_rollout, st_model=st_model, lr=0.0,
+        m_iters=args.m_iters,
+    )
+    post_budget = build_trainer(
+        mesh=mesh, point_grid=train_grid,
+        simulation_steps=args.num_rollout, st_model=st_model, lr=0.0,
+        m_iters=max(1, args.m_iters // args.budget_refinement),
+    )
+
+    # Freeze the pyadjoint tape for the remainder of the run.
+    fd.adjoint.stop_annotating()
+
     u0 = make_ic(train_trainer.physical_model.V)
     train_trainer.generate_ground_truth(u0, args.num_rollout)
 
@@ -424,7 +432,7 @@ if __name__ == "__main__":
     train_error_steps = 3
 
     def _refresh_cb(trainer, epoch, losses, train_errors):
-        refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
+        refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
                           losses, train_errors)
 
     losses, train_errors = train_with_error_report(
@@ -443,7 +451,7 @@ if __name__ == "__main__":
     torch.save(st_model.state_dict(), os.path.join(exp_dir, "trained_model.pt"))
 
     if args.n_epochs % args.save_every != 0:
-        refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
+        refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
                           losses, train_errors)
 
     with open(os.path.join(exp_dir, "summary.json")) as f:

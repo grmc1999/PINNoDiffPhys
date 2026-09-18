@@ -224,22 +224,15 @@ def save_report_json(report, output_path):
 # Experiments
 # ============================================================
 
-def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
+def run_spatial_interpolation_experiment(test_trainer, u0, args):
     """
     Same dt and same time horizon, but denser spatial point sampling.
+
+    *test_trainer* is prebuilt once outside the training loop and reused at
+    every posterior refresh so pyadjoint blocks are recorded only once.
     """
     fine_grid = make_point_grid(args.spatial_test_n)
-    grid = make_point_grid(args.train_grid_n)
     n_steps = args.num_rollout
-
-    test_trainer = build_trainer(
-        mesh=mesh,
-        point_grid=grid, # Use same grid
-        dt=args.dt,
-        simulation_steps=n_steps,
-        st_model=trained_model,
-        lr=0.0,
-    )
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=fine_grid
@@ -258,7 +251,7 @@ def run_spatial_interpolation_experiment(mesh, trained_model, u0, args):
     return report
 
 
-def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
+def run_temporal_interpolation_experiment(test_trainer, u0, args):
     """
     Smaller dt within the same training horizon.
     """
@@ -266,15 +259,6 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     dt_test = args.dt / args.temporal_refinement
     train_horizon = args.num_rollout * args.dt
     n_steps = int(round(train_horizon / dt_test))
-
-    test_trainer = build_trainer(
-        mesh=mesh,
-        point_grid=grid,
-        dt=dt_test,
-        simulation_steps=n_steps,
-        st_model=trained_model,
-        lr=0.0,
-    )
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
@@ -294,7 +278,7 @@ def run_temporal_interpolation_experiment(mesh, trained_model, u0, args):
     return report
 
 
-def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
+def run_temporal_extrapolation_experiment(test_trainer, u0, args):
     """
     Same dt as training, but rollout beyond the training horizon.
     """
@@ -302,15 +286,6 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
     train_horizon = args.num_rollout * args.dt
     test_horizon = args.extrapolation_factor * train_horizon
     n_steps = int(round(test_horizon / args.dt))
-
-    test_trainer = build_trainer(
-        mesh=mesh,
-        point_grid=grid,
-        dt=args.dt,
-        simulation_steps=n_steps,
-        st_model=trained_model,
-        lr=0.0,
-    )
 
     pred_states, input_states, corr_states, pred_times, uncorrected_sol = test_trainer.predict_rollout( # Output should be in original resolution
         u0, t0=0.0, n_steps=n_steps, spatial_sample=grid
@@ -336,14 +311,14 @@ def run_temporal_extrapolation_experiment(mesh, trained_model, u0, args):
 # with the current model state (called after every checkpoint).
 # ============================================================
 
-def refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
-                      losses, train_errors):
+def refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
+                      u0, args, exp_dir, plot_dir, losses, train_errors):
     spatial_report = run_spatial_interpolation_experiment(
-        mesh=mesh, trained_model=st_model, u0=u0, args=args)
+        post_spatial, u0=u0, args=args)
     temporal_interp_report = run_temporal_interpolation_experiment(
-        mesh=mesh, trained_model=st_model, u0=u0, args=args)
+        post_temporal_interp, u0=u0, args=args)
     temporal_extra_report = run_temporal_extrapolation_experiment(
-        mesh=mesh, trained_model=st_model, u0=u0, args=args)
+        post_temporal_extra, u0=u0, args=args)
 
     plot_residual(spatial_report,
                   os.path.join(plot_dir, "spatial_interpolation.png"),
@@ -513,6 +488,38 @@ if __name__ == "__main__":
         lr=1e-4,
     )
 
+    # Posterior test trainers: built ONCE (annotation ON, blocks recorded a
+    # single time) and reused at every checkpoint so the pyadjoint tape stays
+    # constant instead of growing per checkpoint.
+    post_spatial = build_trainer(
+        mesh=mesh,
+        point_grid=train_grid,
+        dt=args.dt,
+        simulation_steps=args.num_rollout,
+        st_model=st_model,
+        lr=0.0,
+    )
+    dt_test = args.dt / args.temporal_refinement
+    post_temporal_interp = build_trainer(
+        mesh=mesh,
+        point_grid=train_grid,
+        dt=dt_test,
+        simulation_steps=int(round(args.num_rollout * args.dt / dt_test)),
+        st_model=st_model,
+        lr=0.0,
+    )
+    post_temporal_extra = build_trainer(
+        mesh=mesh,
+        point_grid=train_grid,
+        dt=args.dt,
+        simulation_steps=int(round(args.extrapolation_factor * args.num_rollout)),
+        st_model=st_model,
+        lr=0.0,
+    )
+
+    # Freeze the pyadjoint tape for the remainder of the run.
+    fd.adjoint.stop_annotating()
+
     u0 = make_ic(train_trainer.physical_model.V)
 
     train_trainer.generate_ground_truth(u0, args.num_rollout)
@@ -521,8 +528,8 @@ if __name__ == "__main__":
     train_errors = []
     train_error_steps = 3
     def _refresh_cb(trainer, epoch, losses, train_errors):
-        refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
-                          losses, train_errors)
+        refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
+                          u0, args, exp_dir, plot_dir, losses, train_errors)
 
     losses, train_errors = train_with_error_report(
         trainer=train_trainer,
@@ -549,8 +556,8 @@ if __name__ == "__main__":
         )
 
     if args.n_epochs % args.save_every != 0:
-        refresh_posterior(mesh, st_model, u0, args, exp_dir, plot_dir,
-                          losses, train_errors)
+        refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
+                          u0, args, exp_dir, plot_dir, losses, train_errors)
 
     with open(os.path.join(exp_dir, "summary.json")) as f:
         summary = json.load(f)
