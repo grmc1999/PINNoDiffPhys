@@ -283,6 +283,7 @@ class FiredrakeTimeStepper(ABC):
         return fem_operator(red)
     
     def build_dense_point_eval_matrix(self,
+        observation_op: Optional[Callable] = None,
         dtype: torch.dtype = torch.float32,
         device: torch.device | str = "cpu",
         chunk_size: int = 64,
@@ -293,12 +294,16 @@ class FiredrakeTimeStepper(ABC):
 
         Rows are assembled column-wise; each column is the point grid
         produced by observing a single canonical basis vector of V.
+
+        If ``observation_op`` is provided (e.g. the one built in ``__init__``),
+        it is reused instead of re-recording the observation blocks on the tape.
         """
         device = torch.device(device)
 
         n_dofs = self.V.dim()
 
-        observation_op = self.build_torch_point_observation_operator()
+        if observation_op is None:
+            observation_op = self.build_torch_point_observation_operator()
 
         cols = []
         with torch.no_grad():
@@ -671,6 +676,7 @@ class FiredrakePINNSBasedSOLTrainer:
         self.observe_op = physical_model.build_torch_point_observation_operator()
         n_dofs = physical_model.V.dim()
         E = physical_model.build_dense_point_eval_matrix(
+            observation_op=self.observe_op,
             dtype=torch.float32,
             device="cpu",
             chunk_size=lift_chunk_size,
