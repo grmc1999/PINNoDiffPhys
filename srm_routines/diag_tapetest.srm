@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --job-name=tapetest
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --time=00:20:00
+#SBATCH --output=/share_zeta/Proxy-Sim/guillermo.carrillo/PINNo_tapetest_%j.log
+
+. /share_zeta/Proxy-Sim/guillermo.carrillo/PINNoDiffPhys/bash_routines/set_env.sh ICA
+
+echo "=== tape test ==="
+CONTAINER="$PATH_ENV/fem_pytorch/envs/firedrake.sif"
+echo "Using container: $CONTAINER"
+cd "$PATH_CODE"
+export SINGULARITY_BIND="$PATH_CODE:/code,$(pwd):/workspace"
+singularity exec "$CONTAINER" python3 /code/tapetest.py
+echo "=== tape test end rc=$? ==="
+exit 0

@@ -14,6 +14,8 @@ import firedrake as fd
 
 from firedrake.adjoint import Control, ReducedFunctional
 from firedrake.ml.pytorch.fem_operator import fem_operator, to_torch
+
+from experiment_utils import no_annotation
 from tqdm import tqdm
 
 class TorchPointCloudLift(torch.nn.Module):
@@ -787,6 +789,10 @@ class FiredrakePINNSBasedSOLTrainer:
     
 
     def predict_rollout(self, u0: fd.Function, t0: float, n_steps: int, spatial_sample: Optional[np.ndarray] = None):
+        with no_annotation():
+            return self._predict_rollout_impl(u0, t0, n_steps, spatial_sample)
+
+    def _predict_rollout_impl(self, u0: fd.Function, t0: float, n_steps: int, spatial_sample: Optional[np.ndarray] = None):
         """
         Uses the trainer's internal forward_prediction_correction().
 

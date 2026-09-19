@@ -1,6 +1,7 @@
 import json
 import os
 import random
+from contextlib import contextmanager
 
 import numpy as np
 import torch
@@ -31,6 +32,60 @@ def tape_stats():
         except Exception:
             annot = -1
     return blocks, annot
+
+
+@contextmanager
+def no_annotation():
+    """Best-effort global pyadjoint annotation freeze across API generations.
+
+    Firedrake-ml's torch<->Function conversions re-register pyadjoint blocks on
+    every fem_operator replay (see reproduce: error-report +10, posterior +213
+    per checkpoint), which makes per-epoch cost grow linearly with checkpoint
+    count.  ``fd.adjoint.stop_annotating()`` alone does not gate these
+    recordings on every installed pyadjoint version, so we also flip the legacy
+    module-level boolean and the modern tape flag directly.
+    """
+    saved = []
+
+    try:
+        import pyadjoint.adjoint as _padj
+        if hasattr(_padj, "annotate_tape") and not callable(getattr(_padj, "annotate_tape")):
+            saved.append(("legacy", None, None, _padj.annotate_tape))
+            _padj.annotate_tape = False
+    except Exception:
+        pass
+    try:
+        import pyadjoint.tape as _pta
+        if hasattr(_pta, "_annotation_enabled"):
+            saved.append(("flag", _pta, "_annotation_enabled", _pta._annotation_enabled))
+            _pta._annotation_enabled = False
+    except Exception:
+        pass
+    for name in ("pause_annotation", "stop_annotating"):
+        fn = getattr(fd.adjoint, name, None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:
+                pass
+    try:
+        yield
+    finally:
+        for kind, mod, key, val in reversed(saved):
+            try:
+                if kind == "legacy":
+                    import pyadjoint.adjoint as _padj
+                    _padj.annotate_tape = val
+                else:
+                    setattr(mod, key, val)
+            except Exception:
+                pass
+        fn = getattr(fd.adjoint, "continue_annotation", None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:
+                pass
 
 
 def set_seed(seed: int):
