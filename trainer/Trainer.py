@@ -663,12 +663,14 @@ class FiredrakePINNSBasedSOLTrainer:
         dt: float,
         loss: Callable,
         lift_regularization: float = 1.0e-6,
-        lift_chunk_size: int = 64
+        lift_chunk_size: int = 64,
+        correction_enabled: bool = True,
     ):
         self.physical_model = physical_model
         self.st_model = statistical_model
         self.optimizer = optimizer
         self.n_steps = simulation_steps
+        self.correction_enabled = correction_enabled
         self.dt = dt
         self.loss = loss
         #self.feature_builder = feature_builder or append_time_channel
@@ -700,6 +702,10 @@ class FiredrakePINNSBasedSOLTrainer:
             self.T.append(self.T[-1] + self.dt)
 
     def correct(self, features: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        if not self.correction_enabled:
+            correction = torch.zeros_like(features[:, :, -1:])
+            corrected = features[:, :, -1:]
+            return corrected, correction, features
         # TODO: Model-corrector should implement the coordinate message passing
         #features = rearrange(self.feature_builder(state_tensor, t),"c h w-> 1 (h w) c").requires_grad_(True)
         correction = rearrange(self.st_model(
@@ -736,12 +742,14 @@ class FiredrakePINNSBasedSOLTrainer:
                 ).requires_grad_(True)
             corrected_grid, corr_grid, features = self.correct(features) # [b p v], ?, [b p v]
             # corrected to embeded feature
-
-            corr_v = self.grid_to_state_lift(corr_grid).to(
-                dtype=phys_next_v.dtype,
-                device=phys_next_v.device,
-            )
-            corrected_v = phys_next_v + corr_v
+            if self.correction_enabled:
+                corr_v = self.grid_to_state_lift(corr_grid).to(
+                    dtype=phys_next_v.dtype,
+                    device=phys_next_v.device,
+                )
+                corrected_v = phys_next_v + corr_v
+            else:
+                corrected_v = phys_next_v
 
             states_in.append(features) # states_in.append(XTUp_1)
             states_corr.append(corr_grid)
@@ -821,13 +829,16 @@ class FiredrakePINNSBasedSOLTrainer:
             
             uncorrected_sol = rearrange(uncorrected_sol_h, "V x y t -> t (y x) V")
 
-            states_pred = list(u_sol + \
-                               rearrange(self.st_model(rearrange(u_sol,"(y x) V -> V x y",
-                                                               x = spatial_sample.shape[0],
-                                                               y = spatial_sample.shape[1],
-                                                               V = (self.physical_model.V.mesh().geometric_dimension() + 1 + 1) # TODO: extend to multiple output space
-                                                               )),"V x y -> (y x) V") for u_sol in uncorrected_sol)
-            
+            if self.correction_enabled:
+                states_pred = list(u_sol + \
+                                   rearrange(self.st_model(rearrange(u_sol,"(y x) V -> V x y",
+                                                                   x = spatial_sample.shape[0],
+                                                                   y = spatial_sample.shape[1],
+                                                                   V = (self.physical_model.V.mesh().geometric_dimension() + 1 + 1) # TODO: extend to multiple output space
+                                                                   )),"V x y -> (y x) V") for u_sol in uncorrected_sol)
+            else:
+                states_pred = list(u_sol for u_sol in uncorrected_sol)
+
             states_pred = torch.stack(states_pred,axis = 0) # [t p V]
                 
             

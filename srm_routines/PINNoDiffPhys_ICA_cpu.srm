@@ -38,13 +38,15 @@ ROLLOUT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('nu
 M_ITERS=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('m_iters',5))")
 SAVE_EVERY=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('save_every',10))")
 SKIP_POSTERIOR=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('skip_posterior',0))")
+MODE=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('mode','hybrid'))")
+REFINE_MESH_N=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('refine_mesh_n',40))")
 
 if [ "$SKIP_POSTERIOR" = "1" ]; then
     export PINNO_SKIP_POSTERIOR=1
 fi
 
 SCRIPT="Train_test_${PDE}.py"
-ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --save_every $SAVE_EVERY --exp_name $(basename $EXP_DIR) --base_output_dir /code/EXPS"
+ARGS="--seed $SEED --train_grid_n $GRID --n_epochs $EPOCHS --batch_size $BATCH --num_rollout $ROLLOUT --save_every $SAVE_EVERY --exp_name $(basename $EXP_DIR) --base_output_dir /code/EXPS --mode $MODE --refine_mesh_n $REFINE_MESH_N"
 
 if [ "$PDE" = "diffusion" ]; then
     DT=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c.get('dt',0.1))")

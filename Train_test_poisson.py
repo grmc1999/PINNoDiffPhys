@@ -17,10 +17,11 @@ import firedrake as fd
 
 from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
 from trainer.Trainer import IterativePoissonSolverStepper, FiredrakePINNSBasedSOLTrainerCNN
+from trainer.PurePINNTrainer import CoordinateMLP, PurePINNTrainer
 from DL_models.PINNS.Residual_losses import poisson_residual_loss
 from experiment_utils import (set_seed, make_exp_dir, save_checkpoint,
-                               rollout_ground_truth_on_grid, gt_error_metrics,
-                               train_with_error_report)
+                               rollout_ground_truth_on_grid, fine_reference_on_grid,
+                               gt_error_metrics, train_with_error_report)
 
 
 def make_point_grid(n: int, P_min: List[float] = [0.0, 0.0],
@@ -74,7 +75,8 @@ def compute_residual_curve(trainer, pred_states, input_states):
 
 
 def build_trainer(mesh, point_grid, simulation_steps, st_model,
-                  m_iters=5, relaxation=1.0, forcing=0.0, lr=1e-4):
+                  m_iters=5, relaxation=1.0, forcing=0.0, lr=1e-4,
+                  mode="hybrid", w_ic=0.0):
     ph_model = IterativePoissonSolverStepper(
         mesh=mesh,
         m_iters=m_iters,
@@ -86,15 +88,44 @@ def build_trainer(mesh, point_grid, simulation_steps, st_model,
         point_evaluator=point_grid,
     )
 
-    trainer = FiredrakePINNSBasedSOLTrainerCNN(
-        physical_model=ph_model,
-        statistical_model=st_model,
-        optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
-        simulation_steps=simulation_steps,
-        dt=1.0,
-        loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0, f=forcing)) ** 2,
-    )
+    if mode == "pinn":
+        trainer = PurePINNTrainer(
+            physical_model=ph_model,
+            statistical_model=st_model,
+            optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
+            simulation_steps=simulation_steps,
+            dt=1.0,
+            loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0, f=forcing)) ** 2,
+            eval_grid=point_grid,
+            w_ic=w_ic,
+        )
+    else:
+        trainer = FiredrakePINNSBasedSOLTrainerCNN(
+            physical_model=ph_model,
+            statistical_model=st_model,
+            optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
+            simulation_steps=simulation_steps,
+            dt=1.0,
+            loss=lambda u, x: (poisson_residual_loss(u, x, K=1.0, f=forcing)) ** 2,
+            correction_enabled=(mode == "hybrid"),
+        )
     return trainer
+
+
+def build_ref_stepper(mesh_def, point_grid, m_iters=5, relaxation=1.0,
+                      forcing=0.0):
+    """Finer-mesh stepper of the same family, used as the refined truth."""
+    mesh = eval(mesh_def)
+    return IterativePoissonSolverStepper(
+        mesh=mesh,
+        m_iters=m_iters,
+        relaxation=relaxation,
+        diffusivity=1.0,
+        forcing=forcing,
+        bc_value=0.0,
+        degree=1,
+        point_evaluator=point_grid,
+    )
 
 
 def grids_from_prediction_list(pred_states, point_grid):
@@ -199,7 +230,7 @@ def save_report_json(report, output_path):
 # Experiments
 # ============================================================
 
-def run_spatial_interpolation_experiment(test_trainer, u0, args):
+def run_spatial_interpolation_experiment(test_trainer, u0, args, ref_stepper=None):
     """Same solver config, but denser spatial point sampling.
 
     *test_trainer* is prebuilt once outside the training loop and reused at
@@ -223,10 +254,14 @@ def run_spatial_interpolation_experiment(test_trainer, u0, args):
     gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model,
                                              u0, n_steps, fine_grid)
     report["gt_error"] = gt_error_metrics(pred_states, gt_grids)
+
+    if ref_stepper is not None:
+        gt_fine_grids = fine_reference_on_grid(ref_stepper, u0, n_steps, fine_grid)
+        report["gt_error_fine"] = gt_error_metrics(pred_states, gt_fine_grids)
     return report
 
 
-def run_budget_shift_experiment(test_trainer, u0, args):
+def run_budget_shift_experiment(test_trainer, u0, args, ref_stepper=None):
     """Fewer Richardson iterations (coarser solver) at test time."""
     grid = make_point_grid(args.train_grid_n)
     n_steps = args.num_rollout
@@ -249,6 +284,10 @@ def run_budget_shift_experiment(test_trainer, u0, args):
     gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model,
                                              u0, n_steps, grid)
     report["gt_error"] = gt_error_metrics(pred_states, gt_grids)
+
+    if ref_stepper is not None:
+        gt_fine_grids = fine_reference_on_grid(ref_stepper, u0, n_steps, grid)
+        report["gt_error_fine"] = gt_error_metrics(pred_states, gt_fine_grids)
     return report
 
 
@@ -259,10 +298,21 @@ def run_budget_shift_experiment(test_trainer, u0, args):
 
 def refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
                       losses, train_errors):
+    point_grid = make_point_grid(args.train_grid_n)
+    ref_spatial = build_ref_stepper(
+        mesh_def=f"fd.UnitSquareMesh({args.refine_mesh_n},{args.refine_mesh_n})",
+        point_grid=point_grid,
+        m_iters=args.m_iters, relaxation=args.relaxation, forcing=args.forcing,
+    )
+    ref_budget = build_ref_stepper(
+        mesh_def=f"fd.UnitSquareMesh({args.refine_mesh_n},{args.refine_mesh_n})",
+        point_grid=point_grid,
+        m_iters=args.m_iters, relaxation=args.relaxation, forcing=args.forcing,
+    )
     spatial_report = run_spatial_interpolation_experiment(
-        post_spatial, u0=u0, args=args)
+        post_spatial, u0=u0, args=args, ref_stepper=ref_spatial)
     budget_report = run_budget_shift_experiment(
-        post_budget, u0=u0, args=args)
+        post_budget, u0=u0, args=args, ref_stepper=ref_budget)
 
     plot_residual(spatial_report,
                   os.path.join(plot_dir, "spatial_interpolation.png"),
@@ -309,6 +359,7 @@ def refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
             "m_iters_train": args.m_iters,
             "num_rollout_train": args.num_rollout,
             "train_grid_n": args.train_grid_n,
+            "mode": args.mode,
             "final_loss": float(losses[-1]) if len(losses) > 0 else None,
             "train_errors": train_errors,
         },
@@ -332,6 +383,18 @@ def refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
             "gt_linf_max": budget_report["gt_error"]["linf_max"],
         },
     }
+    if "gt_error_fine" in spatial_report:
+        summary["spatial_interpolation"].update({
+            "gt_rel_rmse_mean_fine": spatial_report["gt_error_fine"]["rel_rmse_mean"],
+            "gt_rel_rmse_last_fine": spatial_report["gt_error_fine"]["rel_rmse_last"],
+            "gt_linf_max_fine": spatial_report["gt_error_fine"]["linf_max"],
+        })
+    if "gt_error_fine" in budget_report:
+        summary["budget_shift"].update({
+            "gt_rel_rmse_mean_fine": budget_report["gt_error_fine"]["rel_rmse_mean"],
+            "gt_rel_rmse_last_fine": budget_report["gt_error_fine"]["rel_rmse_last"],
+            "gt_linf_max_fine": budget_report["gt_error_fine"]["linf_max"],
+        })
     save_report_json(summary, os.path.join(exp_dir, "summary.json"))
     epoch = train_errors[-1]["epoch"] if train_errors else 0
     print(f"  [posterior] refreshed at epoch {epoch}"
@@ -361,6 +424,12 @@ if __name__ == "__main__":
     # spatial setup
     parser.add_argument("--train_grid_n", type=int, default=11)
     parser.add_argument("--spatial_test_n", type=int, default=41)
+
+    # ablation mode: hybrid (CNN corrector, default), fem (corrected coarse
+    # solver upstream baseline, no training), pinn (pure PINN MLP)
+    parser.add_argument("--mode", type=str, default="hybrid",
+                        choices=["hybrid", "fem", "pinn"])
+    parser.add_argument("--refine_mesh_n", type=int, default=40)
 
     # budget shift test
     parser.add_argument("--budget_refinement", type=int, default=2,
@@ -396,7 +465,10 @@ if __name__ == "__main__":
     # --------------------------------------------------------
     # Training
     # --------------------------------------------------------
-    st_model = simple_dual_space_with_time_derivative_cnn_model()
+    if args.mode == "pinn":
+        st_model = CoordinateMLP()
+    else:
+        st_model = simple_dual_space_with_time_derivative_cnn_model()
     mesh = eval(args.mesh_definition)
     train_grid = make_point_grid(args.train_grid_n)
 
@@ -404,7 +476,7 @@ if __name__ == "__main__":
         mesh=mesh, point_grid=train_grid,
         simulation_steps=5, st_model=st_model, lr=1e-4,
         m_iters=args.m_iters, relaxation=args.relaxation,
-        forcing=args.forcing,
+        forcing=args.forcing, mode=args.mode,
     )
 
     # Posterior test trainers: built ONCE (annotation ON, blocks recorded a
@@ -413,13 +485,17 @@ if __name__ == "__main__":
     post_spatial = build_trainer(
         mesh=mesh, point_grid=train_grid,
         simulation_steps=args.num_rollout, st_model=st_model, lr=0.0,
-        m_iters=args.m_iters,
+        m_iters=args.m_iters, mode=args.mode,
     )
     post_budget = build_trainer(
         mesh=mesh, point_grid=train_grid,
         simulation_steps=args.num_rollout, st_model=st_model, lr=0.0,
         m_iters=max(1, args.m_iters // args.budget_refinement),
+        mode=args.mode,
     )
+
+    if args.mode == "fem":
+        args.n_epochs = 0
 
     # Freeze the pyadjoint tape for the remainder of the run.
     fd.adjoint.stop_annotating()
@@ -454,7 +530,8 @@ if __name__ == "__main__":
     np.save(os.path.join(exp_dir, "train_losses.npy"), np.asarray(losses))
     torch.save(st_model.state_dict(), os.path.join(exp_dir, "trained_model.pt"))
 
-    if args.n_epochs % args.save_every != 0 and os.environ.get("PINNO_SKIP_POSTERIOR") != "1":
+    if (args.n_epochs % args.save_every != 0 or args.mode == "fem") \
+            and os.environ.get("PINNO_SKIP_POSTERIOR") != "1":
         refresh_posterior(post_spatial, post_budget, u0, args, exp_dir, plot_dir,
                           losses, train_errors)
 

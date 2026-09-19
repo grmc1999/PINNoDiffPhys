@@ -11,8 +11,9 @@ import firedrake as fd
 
 from DL_models.Models.CNN_models import simple_dual_space_with_time_derivative_cnn_model
 from trainer.Trainer import ImplicitDiffusionStepper, FiredrakePINNSBasedSOLTrainerCNN
+from trainer.PurePINNTrainer import CoordinateMLP, PurePINNTrainer
 from DL_models.PINNS.Residual_losses import diffusion_loss
-from experiment_utils import (set_seed, make_exp_dir, save_checkpoint, rollout_ground_truth_on_grid, gt_error_metrics, train_with_error_report)
+from experiment_utils import (set_seed, make_exp_dir, save_checkpoint, rollout_ground_truth_on_grid, fine_reference_on_grid, gt_error_metrics, train_with_error_report)
 
 
 
@@ -96,22 +97,44 @@ def rollout_ground_truth(stepper, u0: fd.Function, n_steps: int):
     return states
 
 
-def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4):
+def build_trainer(mesh, point_grid, dt, simulation_steps, st_model, lr=1e-4, mode="hybrid"):
     ph_model = ImplicitDiffusionStepper(
         mesh=mesh,
         dt=dt,
         point_evaluator=point_grid,
     )
 
-    trainer = FiredrakePINNSBasedSOLTrainerCNN(
-        physical_model=ph_model,
-        statistical_model=st_model,
-        optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
-        simulation_steps=simulation_steps,
-        dt=dt,
-        loss=lambda u, x: (diffusion_loss(u, x, K=1.0))**2,
-    )
+    if mode == "pinn":
+        trainer = PurePINNTrainer(
+            physical_model=ph_model,
+            statistical_model=st_model,
+            optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
+            simulation_steps=simulation_steps,
+            dt=dt,
+            loss=lambda u, x: (diffusion_loss(u, x, K=1.0))**2,
+            eval_grid=point_grid,
+        )
+    else:
+        trainer = FiredrakePINNSBasedSOLTrainerCNN(
+            physical_model=ph_model,
+            statistical_model=st_model,
+            optimizer=torch.optim.Adam(st_model.parameters(), lr=lr),
+            simulation_steps=simulation_steps,
+            dt=dt,
+            loss=lambda u, x: (diffusion_loss(u, x, K=1.0))**2,
+            correction_enabled=(mode == "hybrid"),
+        )
     return trainer
+
+
+def build_ref_stepper(mesh_def, dt, point_grid):
+    """Finer-mesh stepper of the same family, used as the refined truth."""
+    mesh = eval(mesh_def)
+    return ImplicitDiffusionStepper(
+        mesh=mesh,
+        dt=dt,
+        point_evaluator=point_grid,
+    )
 
 
 def grids_from_prediction_list(pred_states, point_grid):
@@ -224,7 +247,7 @@ def save_report_json(report, output_path):
 # Experiments
 # ============================================================
 
-def run_spatial_interpolation_experiment(test_trainer, u0, args):
+def run_spatial_interpolation_experiment(test_trainer, u0, args, ref_stepper=None):
     """
     Same dt and same time horizon, but denser spatial point sampling.
 
@@ -248,10 +271,14 @@ def run_spatial_interpolation_experiment(test_trainer, u0, args):
     gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model, u0, n_steps, fine_grid)
     report["gt_error"] = gt_error_metrics(pred_states, gt_grids)
 
+    if ref_stepper is not None:
+        gt_fine_grids = fine_reference_on_grid(ref_stepper, u0, n_steps, fine_grid)
+        report["gt_error_fine"] = gt_error_metrics(pred_states, gt_fine_grids)
+
     return report
 
 
-def run_temporal_interpolation_experiment(test_trainer, u0, args):
+def run_temporal_interpolation_experiment(test_trainer, u0, args, ref_stepper=None):
     """
     Smaller dt within the same training horizon.
     """
@@ -275,10 +302,14 @@ def run_temporal_interpolation_experiment(test_trainer, u0, args):
     gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model, u0, n_steps, grid)
     report["gt_error"] = gt_error_metrics(pred_states, gt_grids)
 
+    if ref_stepper is not None:
+        gt_fine_grids = fine_reference_on_grid(ref_stepper, u0, n_steps, grid)
+        report["gt_error_fine"] = gt_error_metrics(pred_states, gt_fine_grids)
+
     return report
 
 
-def run_temporal_extrapolation_experiment(test_trainer, u0, args):
+def run_temporal_extrapolation_experiment(test_trainer, u0, args, ref_stepper=None):
     """
     Same dt as training, but rollout beyond the training horizon.
     """
@@ -303,6 +334,10 @@ def run_temporal_extrapolation_experiment(test_trainer, u0, args):
     gt_grids = rollout_ground_truth_on_grid(test_trainer.physical_model, u0, n_steps, grid)
     report["gt_error"] = gt_error_metrics(pred_states, gt_grids)
 
+    if ref_stepper is not None:
+        gt_fine_grids = fine_reference_on_grid(ref_stepper, u0, n_steps, grid)
+        report["gt_error_fine"] = gt_error_metrics(pred_states, gt_fine_grids)
+
     return report
 
 
@@ -313,12 +348,29 @@ def run_temporal_extrapolation_experiment(test_trainer, u0, args):
 
 def refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
                       u0, args, exp_dir, plot_dir, losses, train_errors):
+    point_grid = make_point_grid(args.train_grid_n)
+    dt_test = args.dt / args.temporal_refinement
+    ref_spatial = build_ref_stepper(
+        mesh_def=f"fd.UnitSquareMesh({args.refine_mesh_n},{args.refine_mesh_n})",
+        dt=args.dt,
+        point_grid=point_grid,
+    )
+    ref_temp_interp = build_ref_stepper(
+        mesh_def=f"fd.UnitSquareMesh({args.refine_mesh_n},{args.refine_mesh_n})",
+        dt=dt_test,
+        point_grid=point_grid,
+    )
+    ref_temp_extra = build_ref_stepper(
+        mesh_def=f"fd.UnitSquareMesh({args.refine_mesh_n},{args.refine_mesh_n})",
+        dt=args.dt,
+        point_grid=point_grid,
+    )
     spatial_report = run_spatial_interpolation_experiment(
-        post_spatial, u0=u0, args=args)
+        post_spatial, u0=u0, args=args, ref_stepper=ref_spatial)
     temporal_interp_report = run_temporal_interpolation_experiment(
-        post_temporal_interp, u0=u0, args=args)
+        post_temporal_interp, u0=u0, args=args, ref_stepper=ref_temp_interp)
     temporal_extra_report = run_temporal_extrapolation_experiment(
-        post_temporal_extra, u0=u0, args=args)
+        post_temporal_extra, u0=u0, args=args, ref_stepper=ref_temp_extra)
 
     plot_residual(spatial_report,
                   os.path.join(plot_dir, "spatial_interpolation.png"),
@@ -381,6 +433,7 @@ def refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
             "dt_train": args.dt,
             "num_rollout_train": args.num_rollout,
             "train_grid_n": args.train_grid_n,
+            "mode": args.mode,
             "final_loss": float(losses[-1]) if len(losses) > 0 else None,
             "train_errors": train_errors,
         },
@@ -413,6 +466,24 @@ def refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
             "gt_linf_max": temporal_extra_report["gt_error"]["linf_max"],
         },
     }
+    if "gt_error_fine" in spatial_report:
+        summary["spatial_interpolation"].update({
+            "gt_rel_rmse_mean_fine": spatial_report["gt_error_fine"]["rel_rmse_mean"],
+            "gt_rel_rmse_last_fine": spatial_report["gt_error_fine"]["rel_rmse_last"],
+            "gt_linf_max_fine": spatial_report["gt_error_fine"]["linf_max"],
+        })
+    if "gt_error_fine" in temporal_interp_report:
+        summary["temporal_interpolation"].update({
+            "gt_rel_rmse_mean_fine": temporal_interp_report["gt_error_fine"]["rel_rmse_mean"],
+            "gt_rel_rmse_last_fine": temporal_interp_report["gt_error_fine"]["rel_rmse_last"],
+            "gt_linf_max_fine": temporal_interp_report["gt_error_fine"]["linf_max"],
+        })
+    if "gt_error_fine" in temporal_extra_report:
+        summary["temporal_extrapolation"].update({
+            "gt_rel_rmse_mean_fine": temporal_extra_report["gt_error_fine"]["rel_rmse_mean"],
+            "gt_rel_rmse_last_fine": temporal_extra_report["gt_error_fine"]["rel_rmse_last"],
+            "gt_linf_max_fine": temporal_extra_report["gt_error_fine"]["linf_max"],
+        })
     save_report_json(summary, os.path.join(exp_dir, "summary.json"))
     epoch = train_errors[-1]["epoch"] if train_errors else 0
     print(f"  [posterior] refreshed at epoch {epoch}"
@@ -439,6 +510,12 @@ if __name__ == "__main__":
     # spatial setup
     parser.add_argument("--train_grid_n", type=int, default=11)
     parser.add_argument("--spatial_test_n", type=int, default=41)
+
+    # ablation mode: hybrid (CNN corrector, default), fem (corrected coarse
+    # solver upstream baseline, no training), pinn (pure PINN MLP)
+    parser.add_argument("--mode", type=str, default="hybrid",
+                        choices=["hybrid", "fem", "pinn"])
+    parser.add_argument("--refine_mesh_n", type=int, default=40)
 
     # temporal tests
     parser.add_argument("--temporal_refinement", type=int, default=4)
@@ -474,7 +551,10 @@ if __name__ == "__main__":
     # --------------------------------------------------------
     # Training
     # --------------------------------------------------------
-    st_model = simple_dual_space_with_time_derivative_cnn_model()
+    if args.mode == "pinn":
+        st_model = CoordinateMLP()
+    else:
+        st_model = simple_dual_space_with_time_derivative_cnn_model()
     mesh = eval(args.mesh_definition)
 
     train_grid = make_point_grid(args.train_grid_n)
@@ -486,6 +566,7 @@ if __name__ == "__main__":
         simulation_steps=5,
         st_model=st_model,
         lr=1e-4,
+        mode=args.mode,
     )
 
     # Posterior test trainers: built ONCE (annotation ON, blocks recorded a
@@ -498,6 +579,7 @@ if __name__ == "__main__":
         simulation_steps=args.num_rollout,
         st_model=st_model,
         lr=0.0,
+        mode=args.mode,
     )
     dt_test = args.dt / args.temporal_refinement
     post_temporal_interp = build_trainer(
@@ -507,6 +589,7 @@ if __name__ == "__main__":
         simulation_steps=int(round(args.num_rollout * args.dt / dt_test)),
         st_model=st_model,
         lr=0.0,
+        mode=args.mode,
     )
     post_temporal_extra = build_trainer(
         mesh=mesh,
@@ -515,7 +598,11 @@ if __name__ == "__main__":
         simulation_steps=int(round(args.extrapolation_factor * args.num_rollout)),
         st_model=st_model,
         lr=0.0,
+        mode=args.mode,
     )
+
+    if args.mode == "fem":
+        args.n_epochs = 0
 
     # Freeze the pyadjoint tape for the remainder of the run.
     fd.adjoint.stop_annotating()
@@ -559,7 +646,8 @@ if __name__ == "__main__":
             os.path.join(plot_dir, "training_curve.png"),
         )
 
-    if args.n_epochs % args.save_every != 0 and os.environ.get("PINNO_SKIP_POSTERIOR") != "1":
+    if (args.n_epochs % args.save_every != 0 or args.mode == "fem") \
+            and os.environ.get("PINNO_SKIP_POSTERIOR") != "1":
         refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
                           u0, args, exp_dir, plot_dir, losses, train_errors)
 

@@ -145,6 +145,34 @@ def rollout_ground_truth_on_grid(stepper, u0, n_steps, point_grid):
     return gt  # list of ndarray [H, W]
 
 
+def fine_reference_on_grid(ref_stepper, u0, n_steps, point_grid):
+    """Refined-solver truth on *point_grid* -> list of [H, W] arrays.
+
+    Refines only in the spatial/mesh sense: *ref_stepper* is an instance of the
+    same stepper class built on a finer mesh (and, optionally, a smaller dt),
+    sampling the initial condition on its own space so cross-space interpolation
+    is exact.  Evaluates at the same *n_steps* temporal instants as the coarse
+    rollout so error metrics are directly comparable.
+    """
+    spatial_shape = point_grid.shape[:2]  # (H, W)
+    ndim = point_grid.shape[-1]
+
+    vom = fd.VertexOnlyMesh(
+        ref_stepper.V.mesh(),
+        point_grid.reshape(-1, ndim),
+        reorder=False,
+    )
+    P0DG = fd.FunctionSpace(vom, "DG", 0)
+
+    u = fd.Function(ref_stepper.V, name="ref_state").interpolate(u0)
+    gt = []
+    for _ in range(n_steps):
+        u = ref_stepper.step(u)
+        vals = fd.assemble(fd.interpolate(u, P0DG)).dat.data_ro
+        gt.append(vals.reshape(spatial_shape))
+    return gt  # list of ndarray [H, W]
+
+
 def gt_error_metrics(pred_states, gt_grids):
     """Per-step error metrics against ground truth.
 
