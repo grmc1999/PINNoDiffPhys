@@ -177,29 +177,33 @@ class PurePINNTrainer:
         uncorrected_sol) with V = 4 channels [x, y, t, u] so the shared
         ``gt_error_metrics``/``compute_residual_curve`` consumers work unchanged
         (last channel is the predicted scalar field).
+
+        The rollout is built as a single tensor so the predicted ``u`` shares
+        one autograd node with the coordinate tensor returned as
+        ``uncorrected_sol``; residual losses must differentiate the predicted
+        field w.r.t. those exact coordinate channels, and separately-stacked
+        copies would be treated as unused (None) by ``torch.autograd.grad``.
         """
         grid = spatial_sample if spatial_sample is not None else self.eval_grid
         H, W = grid.shape[:2]
         pts = grid.reshape(-1, 2)
         times = [t0 + (k + 1) * self.dt for k in range(n_steps)]
+        T, P = len(times), pts.shape[0]
 
-        states_pred = []
-        states_feat = []
-        for t in times:
-            c = torch.as_tensor(np.concatenate(
-                [pts, np.full((pts.shape[0], 1), float(t))], axis=-1),
-                dtype=torch.float32).requires_grad_(True)
-            u = self.st_model(c)                    # [P, 1]
-            # keep c (not detached) so residual losses that differentiate the
-            # predicted field w.r.t. the feature channels still have a graph
-            feat = torch.cat([c, u], dim=-1)        # [P, 4]
-            states_pred.append(feat)
-            states_feat.append(feat)
+        sp = torch.tile(
+            torch.as_tensor(pts, dtype=torch.float32), (T, 1, 1)
+        ).requires_grad_(True)                # [T, P, 2] leaf
+        tvec = torch.as_tensor(np.asarray(times), dtype=torch.float32,
+                               requires_grad=True)          # [T] leaf
+        tcol = tvec[:, None, None].expand(T, P, 1)          # [T, P, 1]
+        c = torch.cat([sp, tcol], dim=-1)                   # [T, P, 3]
+        u = self.st_model(c)                                 # [T, P, 1]
+        feat = torch.cat([c, u], dim=-1)                     # [T, P, 4]
 
-        states_pred = torch.stack(states_pred, axis=0)   # [T, P, 4]
-        states_in = torch.stack(states_feat, axis=0)     # [T, P, 4]
-        states_corr = torch.zeros_like(states_pred[..., -1:])  # [T, P, 1]
-        uncorrected_sol = states_in                      # residual input features
+        states_pred = feat
+        states_in = feat
+        states_corr = torch.zeros_like(feat[..., -1:])       # [T, P, 1]
+        uncorrected_sol = c                                  # coord node for residual
 
         return states_pred, states_in, states_corr, times, uncorrected_sol
 
