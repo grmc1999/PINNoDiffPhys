@@ -193,8 +193,9 @@ class PurePINNTrainer:
         sp = torch.tile(
             torch.as_tensor(pts, dtype=torch.float32), (T, 1, 1)
         ).requires_grad_(True)                # [T, P, 2] leaf
-        tvec = torch.as_tensor(np.asarray(times), dtype=torch.float32,
-                               requires_grad=True)          # [T] leaf
+        tvec = torch.tensor(
+            np.asarray(times), dtype=torch.float32,
+            requires_grad=True)                            # [T] leaf
         tcol = tvec[:, None, None].expand(T, P, 1)          # [T, P, 1]
         c = torch.cat([sp, tcol], dim=-1)                   # [T, P, 3]
         u = self.st_model(c)                                 # [T, P, 1]
