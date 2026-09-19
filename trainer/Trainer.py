@@ -14,8 +14,6 @@ import firedrake as fd
 
 from firedrake.adjoint import Control, ReducedFunctional
 from firedrake.ml.pytorch.fem_operator import fem_operator, to_torch
-
-from experiment_utils import no_annotation
 from tqdm import tqdm
 
 class TorchPointCloudLift(torch.nn.Module):
@@ -789,10 +787,6 @@ class FiredrakePINNSBasedSOLTrainer:
     
 
     def predict_rollout(self, u0: fd.Function, t0: float, n_steps: int, spatial_sample: Optional[np.ndarray] = None):
-        with no_annotation():
-            return self._predict_rollout_impl(u0, t0, n_steps, spatial_sample)
-
-    def _predict_rollout_impl(self, u0: fd.Function, t0: float, n_steps: int, spatial_sample: Optional[np.ndarray] = None):
         """
         Uses the trainer's internal forward_prediction_correction().
 
@@ -812,32 +806,17 @@ class FiredrakePINNSBasedSOLTrainer:
         uncorrected_sol = list(fd.ml.pytorch.from_torch(phys_v.reshape(-1), self.physical_model.V) for phys_v in states_phys_v)
         # over sample
         if isinstance(spatial_sample,np.ndarray):
-            cache = getattr(self, "_fine_grid_cache", None)
-            if cache is None:
-                cache = {}
-                setattr(self, "_fine_grid_cache", cache)
-            grid_key = spatial_sample.tobytes()
-            entry = cache.get(grid_key)
-            if entry is None:
-                vom = fd.VertexOnlyMesh(
-                    self.physical_model.V.mesh(),
-                    spatial_sample.reshape(-1, self.physical_model.V.mesh().geometric_dimension()),
-                    reorder=False,
-                )
-                P0DG_ = fd.FunctionSpace(vom, "DG", 0)
-                u_ref = fd.Function(self.physical_model.V)
-                observe_fine = fem_operator(
-                    ReducedFunctional(fd.assemble(fd.interpolate(u_ref, P0DG_)), Control(u_ref))
-                )
-                fd.adjoint.stop_annotating()
-                entry = (observe_fine, P0DG_)
-                cache[grid_key] = entry
-            observe_fine, P0DG_ = entry
+            vom = fd.VertexOnlyMesh(
+                                self.physical_model.V.mesh(),
+                                spatial_sample.reshape(-1,self.physical_model.V.mesh().geometric_dimension()),
+                                reorder = False
+                                )
+            P0DG_ = fd.FunctionSpace(vom, "DG", 0)
 
             # List[ [b x y (xytv)] ] - [b x y (xytv) t]
             uncorrected_sol_h = torch.stack(list(
                 self.feature_builder_finer(
-                        observe_fine(fd.ml.pytorch.to_torch(u_sol)).requires_grad_(True), (t0 + self.physical_model.dt.values()*(i+1)), spatial_sample, P0DG_
+                        fd.ml.pytorch.to_torch(fd.assemble(fd.interpolate(u_sol, P0DG_))).requires_grad_(True), (t0 + self.physical_model.dt.values()*(i+1)), spatial_sample, P0DG_
                             ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
             uncorrected_sol = rearrange(uncorrected_sol_h, "V x y t -> t (y x) V")
@@ -888,17 +867,9 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
   def feature_builder_finer(self,u: torch.Tensor, t: float, eval_points: np.ndarray, fs: fd.FunctionSpace):
     u = u.reshape(eval_points.shape[:-1]+(1,))
 
-    key = eval_points.tobytes()
-    cache = getattr(self, "_finer_coord_cache", None)
-    if cache is None:
-        cache = {}
-        setattr(self, "_finer_coord_cache", cache)
-    X = cache.get(key)
-    if X is None:
-        V = fd.VectorFunctionSpace(fs.mesh(), "DG", 0)
-        X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(fs.mesh()))) # [eval_points dim]
-        X = X.reshape(eval_points.shape) # [p_dims x y]
-        cache[key] = X
+    V = fd.VectorFunctionSpace(fs.mesh(), "DG", 0)
+    X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(fs.mesh()))) # [eval_points dim]
+    X = X.reshape(eval_points.shape) # [p_dims x y]
     t = torch.tile(torch.tensor(t),(eval_points.shape[:2])+(1,))
     return torch.concat((X,t,u),axis=-1).transpose(0,-1).float()
   
@@ -947,17 +918,9 @@ class FiredrakePINNSBasedSOLTrainerConsistentCNN(FiredrakePINNSBasedSOLTrainer):
             u_points = u_points[0]
         u = u_points.reshape(eval_points.shape[:-1] + (1,))
 
-        key = eval_points.tobytes()
-        cache = getattr(self, "_finer_coord_cache", None)
-        if cache is None:
-            cache = {}
-            setattr(self, "_finer_coord_cache", cache)
-        X = cache.get(key)
-        if X is None:
-            Vx = fd.VectorFunctionSpace(fs.mesh(), "DG", 0)
-            X = to_torch(fd.Function(Vx).interpolate(fd.SpatialCoordinate(fs.mesh())))
-            X = X.reshape(eval_points.shape)
-            cache[key] = X
+        Vx = fd.VectorFunctionSpace(fs.mesh(), "DG", 0)
+        X = to_torch(fd.Function(Vx).interpolate(fd.SpatialCoordinate(fs.mesh())))
+        X = X.reshape(eval_points.shape)
 
         t_channel = torch.full(
             eval_points.shape[:-1] + (1,),
