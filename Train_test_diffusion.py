@@ -530,6 +530,8 @@ if __name__ == "__main__":
     def _refresh_cb(trainer, epoch, losses, train_errors):
         if os.environ.get("PINNO_SKIP_POSTERIOR") == "1":
             return
+        if epoch != args.n_epochs:
+            return
         refresh_posterior(post_spatial, post_temporal_interp, post_temporal_extra,
                           u0, args, exp_dir, plot_dir, losses, train_errors)
 
