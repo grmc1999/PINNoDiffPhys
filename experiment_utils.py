@@ -340,6 +340,7 @@ def train_with_error_report(trainer, u0, n_steps, point_grid,
         n = min(save_every, n_epochs - start)
         b0, a0 = tape_stats()
         chunk_losses = trainer.train(epochs=n, batch_size=batch_size)
+        losses.extend(chunk_losses)
         b1, a1 = tape_stats()
         print(f"  [tape] train chunk: {b0}->{b1} blocks (annotate {a0}->{a1})")
         save_checkpoint(trainer.st_model, trainer.optimizer, start + n, losses,
