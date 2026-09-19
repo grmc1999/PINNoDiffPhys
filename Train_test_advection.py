@@ -58,6 +58,36 @@ def tensor_state_to_grid(state_tensor, grid_shape):
     """
     return state_tensor.reshape(grid_shape)
 
+def fem_residual_curve(pred_grids, dt, velocity=(1.0, 0.0)):
+    """Numeric PDE residual of the pure-FEM field on the point grid.
+
+    Same report-dict contract as compute_residual_curve; used for fem mode
+    where the interpolated coarse field has no autograd linkage.
+    """
+    u = np.stack(pred_grids)                 # [T, H, W]
+    T, H, W = u.shape
+    du_dx = np.gradient(u, axis=2) / (1.0 / (W - 1))
+    du_dy = np.gradient(u, axis=1) / (1.0 / (H - 1))
+    u_t = np.gradient(u, axis=0) / dt if T > 1 else np.zeros_like(u)
+    res = u_t + velocity[0] * du_dx + velocity[1] * du_dy
+    res2 = res ** 2
+    val_h = np.mean(res2, axis=(1, 2))
+    return {
+        "residual": res2,
+        "residual_decay": val_h,
+        "residual_mean": float(np.mean(val_h)),
+        "residual_last": float(val_h[-1]),
+        "residual_max": float(np.max(val_h)),
+    }
+
+
+def report_from_predictions(trainer, args, pred_states, uncorrected_sol,
+                            pred_grids, dt):
+    if args.mode == "fem":
+        return fem_residual_curve(pred_grids, dt, velocity=(1.0, 0.0))
+    return compute_residual_curve(trainer, pred_states, uncorrected_sol)
+
+
 def compute_residual_curve(trainer, pred_states, input_states):
     """
     Evaluate the same residual-based loss used during training over a rollout.
@@ -270,7 +300,8 @@ def run_spatial_interpolation_experiment(test_trainer, u0, args, ref_stepper=Non
     )
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], fine_grid.shape[:2])
 
-    report = compute_residual_curve(test_trainer, pred_states[:,:,-1:], uncorrected_sol)
+    report = report_from_predictions(test_trainer, args, pred_states[:,:,-1:],
+                                     uncorrected_sol, pred_grids, args.dt)
 
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids
@@ -300,7 +331,8 @@ def run_temporal_interpolation_experiment(test_trainer, u0, args, ref_stepper=No
     )
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], grid.shape[:2])
 
-    report = compute_residual_curve(test_trainer, pred_states[:,:,-1:], uncorrected_sol)
+    report = report_from_predictions(test_trainer, args, pred_states[:,:,-1:],
+                                     uncorrected_sol, pred_grids, dt_test)
 
     report["times"] = np.asarray(pred_times)
     report["dt_test"] = dt_test
@@ -331,7 +363,8 @@ def run_temporal_extrapolation_experiment(test_trainer, u0, args, ref_stepper=No
     )
     pred_grids = grids_from_prediction_list(pred_states[:,:,[-1]], grid.shape[:2])
 
-    report = compute_residual_curve(test_trainer, pred_states[:,:,[-1]], uncorrected_sol)
+    report = report_from_predictions(test_trainer, args, pred_states[:,:,[-1]],
+                                     uncorrected_sol, pred_grids, args.dt)
 
     report["times"] = np.asarray(pred_times)
     report["pred_grids"] = pred_grids

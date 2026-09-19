@@ -86,8 +86,8 @@ class PurePINNTrainer:
         pts = self.eval_grid.reshape(-1, 2)
         tol = 1e-9
         on_bdry = (
-            (pts[:, 0].abs() < tol) | ((pts[:, 0] - 1.0).abs() < tol)
-            | (pts[:, 1].abs() < tol) | ((pts[:, 1] - 1.0).abs() < tol)
+            (np.abs(pts[:, 0]) < tol) | (np.abs(pts[:, 0] - 1.0) < tol)
+            | (np.abs(pts[:, 1]) < tol) | (np.abs(pts[:, 1] - 1.0) < tol)
         )
         n_int = int(np.count_nonzero(~on_bdry))
         self.interior_mask = torch.as_tensor(~np.array(on_bdry, dtype=bool))
