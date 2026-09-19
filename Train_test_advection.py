@@ -64,7 +64,8 @@ def fem_residual_curve(pred_grids, dt, velocity=(1.0, 0.0)):
     Same report-dict contract as compute_residual_curve; used for fem mode
     where the interpolated coarse field has no autograd linkage.
     """
-    u = np.stack(pred_grids)                 # [T, H, W]
+    u = np.stack([g.detach().cpu().numpy() if torch.is_tensor(g)
+                  else np.asarray(g) for g in pred_grids])   # [T, H, W]
     T, H, W = u.shape
     du_dx = np.gradient(u, axis=2) / (1.0 / (W - 1))
     du_dy = np.gradient(u, axis=1) / (1.0 / (H - 1))

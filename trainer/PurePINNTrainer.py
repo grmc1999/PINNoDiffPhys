@@ -120,25 +120,34 @@ class PurePINNTrainer:
         idx_bc = torch.nonzero(self.boundary_mask).squeeze(-1)
         pts_int = pts.index_select(0, idx_int).clone().requires_grad_(True)
         pts_bc = pts.index_select(0, idx_bc).clone().requires_grad_(True)
+        pts_int_b = pts_int.unsqueeze(0)   # [1, P_i, 2]
+        pts_bc_b = pts_bc.unsqueeze(0)     # [1, P_b, 2]
 
         for _ in range(epochs):
             total = torch.zeros(1, dtype=torch.float32)
             ts = np.random.uniform(0.0, self.t_max, size=batch_size)
             for ti in ts:
                 t = float(ti)
-                # interior residual at collocation time t (fresh leaf coords)
+                # interior residual at collocation time t.  The time channel
+                # must be a grad-enabled tensor and the batch dim lives on the
+                # coord tensor itself so that st_model(c_int) and the residual
+                # x_grad(u, xt) share the very same node (`xt` is `c_int`, not
+                # an unsqueeze view of it, which autograd cannot trace back).
+                t_leaf = torch.tensor(
+                    t, dtype=torch.float32,
+                    requires_grad=True).view(1, 1, 1)
                 c_int = torch.cat(
-                    [pts_int, torch.full((pts_int.shape[0], 1), t, dtype=torch.float32)],
+                    [pts_int_b, t_leaf.expand(1, pts_int_b.shape[1], 1)],
                     dim=-1,
-                )
-                u_int = self.st_model(c_int)                 # [P_i, 1]
-                rloss = torch.mean(self._residual_grid(
-                    u_int.unsqueeze(0), c_int.unsqueeze(0)))
+                )                                # [1, P_i, 3]
+                u_int = self.st_model(c_int)     # [1, P_i, 1]
+                rloss = torch.mean(self._residual_grid(u_int, c_int))
                 total = total + rloss
 
                 # initial condition (t = 0) on the full grid
                 c_ic = torch.cat(
-                    [pts, torch.zeros((pts.shape[0], 1), dtype=torch.float32)],
+                    [pts.unsqueeze(0),
+                     torch.zeros((1, pts.shape[0], 1), dtype=torch.float32)],
                     dim=-1,
                 ).requires_grad_(True)
                 u_ic = self.st_model(c_ic).squeeze(-1)       # [P]
@@ -147,10 +156,10 @@ class PurePINNTrainer:
 
                 # boundary condition u|_dOmega = 0
                 c_bc = torch.cat(
-                    [pts_bc, torch.full((pts_bc.shape[0], 1), t, dtype=torch.float32)],
+                    [pts_bc_b, t_leaf.expand(1, pts_bc_b.shape[1], 1)],
                     dim=-1,
                 )
-                u_bc = self.st_model(c_bc).squeeze(-1)
+                u_bc = self.st_model(c_bc).squeeze(-1)       # [P_b]
                 bc_err = torch.mean(u_bc ** 2)
                 total = total + self.w_bc * bc_err
 

@@ -66,7 +66,8 @@ def fem_residual_curve(pred_grids, dt, K=1.0):
     identical for fem mode (the interpolated coarse field has no autograd
     linkage to coordinates, so the analytic loss cannot be differentiated).
     """
-    u = np.stack(pred_grids)                 # [T, H, W]
+    u = np.stack([g.detach().cpu().numpy() if torch.is_tensor(g)
+                  else np.asarray(g) for g in pred_grids])   # [T, H, W]
     T, H, W = u.shape
     du_dx = np.gradient(u, axis=2) / (1.0 / (W - 1))
     du_dy = np.gradient(u, axis=1) / (1.0 / (H - 1))
