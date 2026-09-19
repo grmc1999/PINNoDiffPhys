@@ -10,6 +10,28 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+try:
+    from pyadjoint import annotate_tape, get_working_tape
+except Exception:
+    annotate_tape = None
+    get_working_tape = None
+
+
+def tape_stats():
+    """(pyadjoint block count, annotation-on flag) for diagnostics."""
+    blocks = annot = None
+    if get_working_tape is not None:
+        try:
+            blocks = len(get_working_tape().get_blocks())
+        except Exception:
+            blocks = -1
+    if annotate_tape is not None:
+        try:
+            annot = bool(annotate_tape)
+        except Exception:
+            annot = -1
+    return blocks, annot
+
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -261,26 +283,28 @@ def train_with_error_report(trainer, u0, n_steps, point_grid,
 
     for start in range(0, n_epochs, save_every):
         n = min(save_every, n_epochs - start)
+        b0, a0 = tape_stats()
         chunk_losses = trainer.train(epochs=n, batch_size=batch_size)
-        losses.extend(chunk_losses)
+        b1, a1 = tape_stats()
+        print(f"  [tape] train chunk: {b0}->{b1} blocks (annotate {a0}->{a1})")
         save_checkpoint(trainer.st_model, trainer.optimizer, start + n, losses,
                         os.path.join(exp_dir, "checkpoint.pt"))
 
         metrics, _cur_pred, _cur_gt, _cur_times = _training_error_with_grids(
             trainer, u0, n_steps, point_grid)
+        b2, a2 = tape_stats()
         train_errors.append({"epoch": start + n, **metrics})
         print(f"  [checkpoint] epoch {start+n}/{n_epochs}  "
               f"loss={chunk_losses[-1]:.6f}  "
               f"rel_rmse={metrics['rel_rmse_mean']:.4f}  "
               f"linf={metrics['linf_max']:.4f}")
-        try:
-            from pyadjoint import get_working_tape
-            print(f"  [tape] pyadjoint blocks={len(get_working_tape().get_blocks())}")
-        except Exception:
-            pass
+        print(f"  [tape] error-report: {b1}->{b2} blocks (annotate {a1}->{a2})")
         _emit_images(start + n)
+        b3, a3 = tape_stats()
         if checkpoint_callback is not None:
             checkpoint_callback(trainer, start + n, losses, train_errors)
+        b4, a4 = tape_stats()
+        print(f"  [tape] callback: {b3}->{b4} blocks (annotate {a3}->{a4})")
 
     np.save(os.path.join(exp_dir, "train_errors.npy"), train_errors)
     with open(os.path.join(exp_dir, "train_errors.json"), "w") as f:
