@@ -809,7 +809,7 @@ class FiredrakePINNSBasedSOLTrainer:
         states_pred, states_corr, states_in, states_phys_v = self.forward_prediction_correction_from_state(
             fd.ml.pytorch.to_torch(u0),t0)
         #uncorrected_sol = list(fd.ml.pytorch.from_torch(pred - corr, self.physical_model.V) for pred, corr in zip(states_pred, states_corr))
-        uncorrected_sol = [phys_v.reshape(-1) for phys_v in states_phys_v]
+        uncorrected_sol = list(fd.ml.pytorch.from_torch(phys_v.reshape(-1), self.physical_model.V) for phys_v in states_phys_v)
         # over sample
         if isinstance(spatial_sample,np.ndarray):
             cache = getattr(self, "_fine_grid_cache", None)
@@ -837,8 +837,8 @@ class FiredrakePINNSBasedSOLTrainer:
             # List[ [b x y (xytv)] ] - [b x y (xytv) t]
             uncorrected_sol_h = torch.stack(list(
                 self.feature_builder_finer(
-                        observe_fine(uv).requires_grad_(True), (t0 + self.physical_model.dt.values()*(i+1)), spatial_sample, P0DG_
-                            ) for i,uv in enumerate(uncorrected_sol)), axis = -1 )
+                        observe_fine(fd.ml.pytorch.to_torch(u_sol)).requires_grad_(True), (t0 + self.physical_model.dt.values()*(i+1)), spatial_sample, P0DG_
+                            ) for i,u_sol in enumerate(uncorrected_sol)), axis = -1 )
             
             uncorrected_sol = rearrange(uncorrected_sol_h, "V x y t -> t (y x) V")
 
@@ -896,8 +896,7 @@ class FiredrakePINNSBasedSOLTrainerCNN(FiredrakePINNSBasedSOLTrainer):
     X = cache.get(key)
     if X is None:
         V = fd.VectorFunctionSpace(fs.mesh(), "DG", 0)
-        coords = fd.Function(V).interpolate(fd.SpatialCoordinate(fs.mesh()))
-        X = torch.as_tensor(np.asarray(coords.dat.data_ro)).float() # [eval_points dim]
+        X = fd.ml.pytorch.to_torch(fd.Function(V).interpolate(fd.SpatialCoordinate(fs.mesh()))) # [eval_points dim]
         X = X.reshape(eval_points.shape) # [p_dims x y]
         cache[key] = X
     t = torch.tile(torch.tensor(t),(eval_points.shape[:2])+(1,))
@@ -956,8 +955,7 @@ class FiredrakePINNSBasedSOLTrainerConsistentCNN(FiredrakePINNSBasedSOLTrainer):
         X = cache.get(key)
         if X is None:
             Vx = fd.VectorFunctionSpace(fs.mesh(), "DG", 0)
-            coords = fd.Function(Vx).interpolate(fd.SpatialCoordinate(fs.mesh()))
-            X = torch.as_tensor(np.asarray(coords.dat.data_ro)).float()
+            X = to_torch(fd.Function(Vx).interpolate(fd.SpatialCoordinate(fs.mesh())))
             X = X.reshape(eval_points.shape)
             cache[key] = X
 
